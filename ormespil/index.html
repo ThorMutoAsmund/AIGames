@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ormespil (Snake)</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --cell: #1f2937;
+      --cell-hover: #374151;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --danger: #ef4444;
+      --food: #f59e0b;
+      --snake: #60a5fa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #1e293b, var(--bg));
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    .game {
+      width: min(520px, 95vw);
+      background: var(--panel);
+      border: 1px solid #2b3545;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.3rem;
+    }
+
+    .status {
+      margin-bottom: 10px;
+      color: var(--muted);
+      min-height: 2.8em;
+      line-height: 1.35;
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .score {
+      color: var(--accent);
+    }
+
+    .best {
+      color: #c4b5fd;
+    }
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: block;
+      background: var(--cell);
+      border: 1px solid #334155;
+      border-radius: 10px;
+      image-rendering: pixelated;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      background: linear-gradient(135deg, #334155, #475569);
+      color: white;
+      transition:
+        transform 120ms ease,
+        box-shadow 160ms ease,
+        filter 160ms ease,
+        border-color 160ms ease;
+      box-shadow:
+        0 8px 18px rgba(15, 23, 42, 0.45),
+        0 0 0 1px rgba(148, 163, 184, 0.18);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+      box-shadow:
+        0 12px 24px rgba(15, 23, 42, 0.55),
+        0 0 0 1px rgba(148, 163, 184, 0.24);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow:
+        0 6px 14px rgba(15, 23, 42, 0.45),
+        0 0 0 1px rgba(148, 163, 184, 0.2);
+    }
+
+    .start-btn {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #052e16;
+      border-color: rgba(134, 239, 172, 0.45);
+      box-shadow:
+        0 10px 22px rgba(22, 163, 74, 0.35),
+        0 0 0 1px rgba(21, 128, 61, 0.35);
+    }
+
+    .restart-btn {
+      background: linear-gradient(135deg, #475569, #334155);
+      border-color: rgba(148, 163, 184, 0.35);
+    }
+
+    .dead {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      filter: grayscale(0.2);
+      transform: none;
+      box-shadow:
+        0 6px 12px rgba(15, 23, 42, 0.3),
+        0 0 0 1px rgba(148, 163, 184, 0.12);
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <h1>Ormespil (Snake)</h1>
+    <div id="status" class="status">
+      Use Arrow keys or WASD. Eat dots to grow. Do not hit walls or yourself.
+    </div>
+
+    <div class="hud">
+      <div class="score">Score: <span id="score">0</span></div>
+      <div class="best">Best: <span id="best">0</span></div>
+    </div>
+
+    <canvas id="board" width="400" height="400" aria-label="Snake board"></canvas>
+
+    <div class="controls">
+      <button id="startBtn" class="start-btn">Start</button>
+      <button id="restartBtn" class="restart-btn">Restart</button>
+    </div>
+  </main>
+
+  <script>
+    const GRID_SIZE = 20;
+    const STEP_MS = 120;
+
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const startBtn = document.getElementById("startBtn");
+    const restartBtn = document.getElementById("restartBtn");
+
+    let snake;
+    let dir;
+    let directionQueue;
+    let food;
+    let score;
+    let best;
+    let running;
+    let isGameOver;
+    let explosionParticles;
+    let timer;
+
+    function setupGame() {
+      const center = Math.floor(GRID_SIZE / 2);
+      snake = [
+        { x: center - 1, y: center },
+        { x: center - 2, y: center },
+        { x: center - 3, y: center }
+      ];
+      dir = { x: 1, y: 0 };
+      directionQueue = [];
+      food = spawnFood();
+      score = 0;
+      running = false;
+      isGameOver = false;
+      explosionParticles = [];
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      updateHud();
+      statusEl.textContent = "Press Start, then use Arrow keys or WASD.";
+      statusEl.classList.remove("dead");
+      startBtn.disabled = false;
+      draw();
+    }
+
+    function updateHud() {
+      scoreEl.textContent = String(score);
+      bestEl.textContent = String(best);
+    }
+
+    function spawnFood() {
+      while (true) {
+        const candidate = {
+          x: Math.floor(Math.random() * GRID_SIZE),
+          y: Math.floor(Math.random() * GRID_SIZE)
+        };
+        const onSnake = snake && snake.some((part) => part.x === candidate.x && part.y === candidate.y);
+        if (!onSnake) {
+          return candidate;
+        }
+      }
+    }
+
+    function sameCell(a, b) {
+      return a.x === b.x && a.y === b.y;
+    }
+
+    function tick() {
+      if (!running || isGameOver) {
+        return;
+      }
+      while (directionQueue.length > 0) {
+        const candidate = directionQueue.shift();
+        const reversing = dir.x === -candidate.x && dir.y === -candidate.y;
+        if (!reversing) {
+          dir = candidate;
+          break;
+        }
+      }
+      const head = snake[0];
+      const newHead = { x: head.x + dir.x, y: head.y + dir.y };
+
+      const hitWall =
+        newHead.x < 0 ||
+        newHead.y < 0 ||
+        newHead.x >= GRID_SIZE ||
+        newHead.y >= GRID_SIZE;
+
+      if (hitWall) {
+        gameOver(head);
+        return;
+      }
+
+      const hitSelf = snake.some((part) => sameCell(part, newHead));
+      if (hitSelf) {
+        gameOver(newHead);
+        return;
+      }
+
+      snake.unshift(newHead);
+
+      if (sameCell(newHead, food)) {
+        score += 1;
+        if (score > best) {
+          best = score;
+          localStorage.setItem("snakeBestScore", String(best));
+        }
+        food = spawnFood();
+      } else {
+        snake.pop();
+      }
+
+      updateHud();
+      draw();
+    }
+
+    function drawCell(x, y, color, inset = 2) {
+      const size = canvas.width / GRID_SIZE;
+      ctx.fillStyle = color;
+      ctx.fillRect(x * size + inset, y * size + inset, size - inset * 2, size - inset * 2);
+    }
+
+    function drawGrid() {
+      const size = canvas.width / GRID_SIZE;
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= GRID_SIZE; i += 1) {
+        const p = i * size;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(canvas.width, p);
+        ctx.stroke();
+      }
+    }
+
+    function draw() {
+      drawGrid();
+      drawCell(food.x, food.y, "#f59e0b", 4);
+      for (let i = snake.length - 1; i >= 0; i -= 1) {
+        const part = snake[i];
+        const isHead = i === 0;
+        drawCell(part.x, part.y, isHead ? "#93c5fd" : "#60a5fa", 3);
+      }
+      if (explosionParticles && explosionParticles.length > 0) {
+        const size = canvas.width / GRID_SIZE;
+        explosionParticles.forEach((particle) => {
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(
+            particle.x * size + size / 2,
+            particle.y * size + size / 2,
+            size * particle.radius,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        });
+      }
+    }
+
+    function startGame() {
+      if (running || isGameOver) return;
+      running = true;
+      statusEl.textContent = "Keep going. Eat dots and avoid walls and your own tail.";
+      timer = setInterval(tick, STEP_MS);
+    }
+
+    function gameOver(point) {
+      running = false;
+      isGameOver = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      const center = {
+        x: Math.max(0, Math.min(GRID_SIZE - 1, point.x)),
+        y: Math.max(0, Math.min(GRID_SIZE - 1, point.y))
+      };
+      explosionParticles = [
+        { x: center.x, y: center.y, color: "#f97316", radius: 0.34 },
+        { x: center.x - 0.35, y: center.y, color: "#ef4444", radius: 0.24 },
+        { x: center.x + 0.35, y: center.y, color: "#ef4444", radius: 0.24 },
+        { x: center.x, y: center.y - 0.35, color: "#fb7185", radius: 0.2 },
+        { x: center.x, y: center.y + 0.35, color: "#fb7185", radius: 0.2 },
+        { x: center.x - 0.25, y: center.y - 0.3, color: "#fde047", radius: 0.12 },
+        { x: center.x + 0.25, y: center.y + 0.3, color: "#fde047", radius: 0.12 }
+      ];
+      startBtn.disabled = true;
+      statusEl.textContent = `Game over - snake exploded. You ate ${score} dot${score === 1 ? "" : "s"}. Press Restart to try again.`;
+      statusEl.classList.add("dead");
+      draw();
+    }
+
+    function setDirection(x, y) {
+      if (isGameOver) {
+        return;
+      }
+      if (!running) {
+        startGame();
+      }
+      const candidate = { x, y };
+      const baseDirection =
+        directionQueue.length > 0
+          ? directionQueue[directionQueue.length - 1]
+          : dir;
+      const reversing = baseDirection.x === -candidate.x && baseDirection.y === -candidate.y;
+      const duplicate = baseDirection.x === candidate.x && baseDirection.y === candidate.y;
+      if (reversing || duplicate) return;
+      directionQueue.push(candidate);
+      if (directionQueue.length > 3) {
+        directionQueue.shift();
+      }
+    }
+
+    window.addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
+        event.preventDefault();
+      }
+      if (key === "arrowup" || key === "w") setDirection(0, -1);
+      if (key === "arrowdown" || key === "s") setDirection(0, 1);
+      if (key === "arrowleft" || key === "a") setDirection(-1, 0);
+      if (key === "arrowright" || key === "d") setDirection(1, 0);
+    });
+
+    startBtn.addEventListener("click", startGame);
+    restartBtn.addEventListener("click", setupGame);
+
+    best = Number(localStorage.getItem("snakeBestScore") || "0");
+    setupGame();
+  </script>
+</body>
+</html>

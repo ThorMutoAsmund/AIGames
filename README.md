@@ -7,6 +7,7 @@ Static multi-game site where each game lives in its own folder and is served fro
 - `/colorgame/`
 - `/geometrydash/`
 - `/tictactoe/`
+- `/ormespil/`
 
 ## Add a new game
 
