@@ -81,6 +81,9 @@
     </div>
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="./firebase-config.js"></script>
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
@@ -103,7 +106,9 @@
     let running = true;
     let gameOver = false;
     let score = 0;
-    let bestScore = Number(localStorage.getItem("dashBest") || 0);
+    let bestScore = 0;
+    let bestSource = "local";
+    let firebaseBestRef = null;
     let coyoteFrames = coyoteTimeFrames;
     let jumpBuffer = 0;
 
@@ -152,6 +157,90 @@
       { type: "spike", x: 4070, w: 34, h: 34 }
     ];
 
+    function loadLocalBest() {
+      return Number(localStorage.getItem("dashBest") || 0);
+    }
+
+    function saveLocalBest(value) {
+      localStorage.setItem("dashBest", String(value));
+    }
+
+    function updateBest(candidateScore) {
+      if (candidateScore <= bestScore) {
+        return;
+      }
+
+      if (bestSource === "firebase" && firebaseBestRef) {
+        const previousBest = bestScore;
+        firebaseBestRef.transaction((currentValue) => {
+          const current = Number(currentValue || 0);
+          return candidateScore > current ? candidateScore : current;
+        }, (error, committed, snapshot) => {
+          if (error || !committed) {
+            return;
+          }
+          const txBest = Number(snapshot.val() || 0);
+          if (txBest > previousBest) {
+            console.log(`[geometrydash] Firebase highscore updated: ${previousBest} -> ${txBest}`);
+          }
+          if (txBest > bestScore) {
+            bestScore = txBest;
+            saveLocalBest(bestScore);
+          }
+        });
+        return;
+      }
+
+      bestScore = candidateScore;
+      saveLocalBest(bestScore);
+    }
+
+    async function initializeBestScore() {
+      const localBest = loadLocalBest();
+      bestScore = localBest;
+      bestSource = "local";
+
+      const canUseFirebase =
+        typeof window.firebase !== "undefined" &&
+        window.FIREBASE_CONFIG &&
+        typeof window.FIREBASE_CONFIG === "object" &&
+        window.FIREBASE_CONFIG.apiKey;
+
+      if (!canUseFirebase) {
+        return;
+      }
+
+      try {
+        if (firebase.apps.length === 0) {
+          firebase.initializeApp(window.FIREBASE_CONFIG);
+        }
+        const db = firebase.database();
+        firebaseBestRef = db.ref("scores/geometrydash/highscore");
+
+        const snapshot = await firebaseBestRef.once("value");
+        const globalBest = Number(snapshot.val() || 0);
+        bestScore = Math.max(localBest, globalBest);
+        bestSource = "firebase";
+        saveLocalBest(bestScore);
+
+        if (localBest > globalBest) {
+          updateBest(localBest);
+        }
+
+        firebaseBestRef.on("value", (snap) => {
+          const liveBest = Number(snap.val() || 0);
+          if (liveBest > bestScore) {
+            bestScore = liveBest;
+            saveLocalBest(bestScore);
+          }
+        });
+      } catch (err) {
+        console.error("Firebase highscore unavailable, using local storage.", err);
+        bestSource = "local";
+        bestScore = localBest;
+      }
+    }
+
     function reset() {
       worldX = 0;
       score = 0;
@@ -166,6 +255,13 @@
       player.targetRotation = 0;
       statusEl.innerHTML = '<span class="good">Running</span>';
       scoreEl.textContent = "0";
+    }
+
+    function handleCrash(messageHtml) {
+      running = false;
+      gameOver = true;
+      updateBest(score);
+      statusEl.innerHTML = messageHtml;
     }
 
     function requestJump() {
@@ -218,11 +314,7 @@
         if (obj.type === "spike") {
           const box = { x: screenX + 4, y: groundY - obj.h + 10, w: obj.w - 8, h: obj.h - 10 };
           if (aabb(playerBox, box)) {
-            running = false;
-            gameOver = true;
-            bestScore = Math.max(bestScore, score);
-            localStorage.setItem("dashBest", String(bestScore));
-            statusEl.innerHTML = '<span class="warn">Crashed! Press space to restart</span>';
+            handleCrash('<span class="warn">Crashed! Press space to restart</span>');
           }
         } else if (obj.type === "cube") {
           const box = { x: screenX, y: groundY - obj.h, w: obj.w, h: obj.h };
@@ -238,11 +330,7 @@
           }
 
           if (aabb(playerBox, box)) {
-            running = false;
-            gameOver = true;
-            bestScore = Math.max(bestScore, score);
-            localStorage.setItem("dashBest", String(bestScore));
-            statusEl.innerHTML = '<span class="warn">Hit block! Press space to restart</span>';
+            handleCrash('<span class="warn">Hit block! Press space to restart</span>');
           }
         } else if (obj.type === "pad") {
           const box = { x: screenX, y: groundY - obj.h, w: obj.w, h: obj.h };
@@ -385,7 +473,8 @@
     function drawText() {
       ctx.fillStyle = "#ffffffd9";
       ctx.font = "bold 20px Segoe UI";
-      ctx.fillText(`Best: ${bestScore}`, 18, 34);
+      const bestPrefix = bestSource === "firebase" ? "Global best" : "Best";
+      ctx.fillText(`${bestPrefix}: ${bestScore}`, 18, 34);
       if (gameOver) {
         ctx.fillStyle = "#00000077";
         ctx.fillRect(0, 0, W, H);
@@ -435,6 +524,7 @@
       requestJump();
     }, { passive: false });
 
+    initializeBestScore();
     requestAnimationFrame(frame);
   </script>
 </body>

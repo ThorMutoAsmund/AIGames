@@ -162,7 +162,7 @@
 
     <div class="hud">
       <div class="score">Score: <span id="score">0</span></div>
-      <div class="best">Best: <span id="best">0</span></div>
+      <div class="best"><span id="bestScope">Best</span>: <span id="best">0</span></div>
     </div>
 
     <canvas id="board" width="400" height="400" aria-label="Snake board"></canvas>
@@ -173,6 +173,9 @@
     </div>
   </main>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="./firebase-config.js"></script>
   <script>
     const GRID_SIZE = 20;
     const STEP_MS = 120;
@@ -182,6 +185,7 @@
     const statusEl = document.getElementById("status");
     const scoreEl = document.getElementById("score");
     const bestEl = document.getElementById("best");
+    const bestScopeEl = document.getElementById("bestScope");
     const startBtn = document.getElementById("startBtn");
     const restartBtn = document.getElementById("restartBtn");
 
@@ -195,6 +199,8 @@
     let isGameOver;
     let explosionParticles;
     let timer;
+    let bestSource;
+    let firebaseBestRef;
 
     function setupGame() {
       const center = Math.floor(GRID_SIZE / 2);
@@ -224,6 +230,91 @@
     function updateHud() {
       scoreEl.textContent = String(score);
       bestEl.textContent = String(best);
+      bestScopeEl.textContent = bestSource === "firebase" ? "Global best" : "Local best";
+    }
+
+    function loadLocalBest() {
+      return Number(localStorage.getItem("snakeBestScore") || "0");
+    }
+
+    function saveLocalBest(value) {
+      localStorage.setItem("snakeBestScore", String(value));
+    }
+
+    async function initializeBestScore() {
+      bestSource = "local";
+      best = loadLocalBest();
+      updateHud();
+
+      const canUseFirebase =
+        typeof window.firebase !== "undefined" &&
+        window.FIREBASE_CONFIG &&
+        typeof window.FIREBASE_CONFIG === "object" &&
+        window.FIREBASE_CONFIG.apiKey;
+
+      if (!canUseFirebase) {
+        return;
+      }
+
+      try {
+        if (firebase.apps.length === 0) {
+          firebase.initializeApp(window.FIREBASE_CONFIG);
+        }
+        const db = firebase.database();
+        firebaseBestRef = db.ref("scores/ormespil/highscore");
+
+        const snapshot = await firebaseBestRef.once("value");
+        const globalBest = Number(snapshot.val() || 0);
+        if (globalBest > best) {
+          best = globalBest;
+        }
+        bestSource = "firebase";
+        updateHud();
+
+        firebaseBestRef.on("value", (snap) => {
+          const liveBest = Number(snap.val() || 0);
+          if (liveBest !== best) {
+            best = liveBest;
+            updateHud();
+          }
+        });
+      } catch (err) {
+        console.error("Firebase highscore unavailable, using local storage.", err);
+        bestSource = "local";
+        best = loadLocalBest();
+        updateHud();
+      }
+    }
+
+    function updateBest(candidateScore) {
+      if (candidateScore <= best) {
+        return;
+      }
+
+      if (bestSource === "firebase" && firebaseBestRef) {
+        const previousBest = best;
+        firebaseBestRef.transaction((currentValue) => {
+          const current = Number(currentValue || 0);
+          return candidateScore > current ? candidateScore : current;
+        }, (error, committed, snapshot) => {
+          if (error || !committed) {
+            return;
+          }
+          const txBest = Number(snapshot.val() || 0);
+          if (txBest > previousBest) {
+            console.log(`[ormespil] Firebase highscore updated: ${previousBest} -> ${txBest}`);
+          }
+          if (txBest > best) {
+            best = txBest;
+            updateHud();
+          }
+        });
+        return;
+      }
+
+      best = candidateScore;
+      saveLocalBest(best);
+      updateHud();
     }
 
     function spawnFood() {
@@ -279,10 +370,7 @@
 
       if (sameCell(newHead, food)) {
         score += 1;
-        if (score > best) {
-          best = score;
-          localStorage.setItem("snakeBestScore", String(best));
-        }
+        updateBest(score);
         food = spawnFood();
       } else {
         snake.pop();
@@ -410,7 +498,10 @@
     startBtn.addEventListener("click", startGame);
     restartBtn.addEventListener("click", setupGame);
 
-    best = Number(localStorage.getItem("snakeBestScore") || "0");
+    best = 0;
+    bestSource = "local";
+    firebaseBestRef = null;
+    initializeBestScore();
     setupGame();
   </script>
 </body>
