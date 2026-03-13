@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Color Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top, #fdfbfb 0, #ebedee 40%, #d1d9e6 100%);
+      color: #111827;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 900px;
+      padding: 32px 24px 40px;
+      background: #ffffffee;
+      border-radius: 24px;
+      box-shadow:
+        0 18px 45px rgba(15, 23, 42, 0.18),
+        0 0 0 1px rgba(148, 163, 184, 0.4);
+      position: relative;
+    }
+
+    .title {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-align: center;
+      margin-bottom: 16px;
+      color: #111827;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #4b5563;
+      font-size: 0.98rem;
+      margin-bottom: 24px;
+    }
+
+    .panel {
+      text-align: center;
+      margin-top: 12px;
+    }
+
+    .instructions {
+      font-size: 1.05rem;
+      line-height: 1.5;
+      margin-bottom: 28px;
+      color: #111827;
+    }
+
+    .hint {
+      font-size: 0.9rem;
+      color: #6b7280;
+      margin-top: 8px;
+    }
+
+    .intro-actions {
+      margin-top: 28px;
+    }
+
+    .lang-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.04);
+      box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.6);
+      position: absolute;
+      top: 20px;
+      right: 20px;
+    }
+
+    .lang-toggle-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #6b7280;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #1d4ed8;
+      transition: 0.2s;
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.8);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      top: 3px;
+      background-color: white;
+      transition: 0.2s;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.4);
+    }
+
+    .switch input:checked + .slider {
+      background-color: #1d4ed8;
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.8);
+    }
+    .switch input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 22px;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.98rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition:
+        background 160ms ease,
+        transform 120ms ease,
+        box-shadow 160ms ease;
+      background: linear-gradient(135deg, #2563eb, #4f46e5);
+      color: #f9fafb;
+      box-shadow:
+        0 10px 20px rgba(37, 99, 235, 0.35),
+        0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 16px 30px rgba(37, 99, 235, 0.42),
+        0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+      box-shadow:
+        0 8px 18px rgba(37, 99, 235, 0.35),
+        0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .btn-secondary {
+      background: #111827;
+      box-shadow:
+        0 10px 20px rgba(15, 23, 42, 0.4),
+        0 0 0 1px rgba(15, 23, 42, 0.9);
+    }
+
+    .btn-secondary:hover {
+      box-shadow:
+        0 16px 30px rgba(15, 23, 42, 0.7),
+        0 0 0 1px rgba(15, 23, 42, 0.9);
+    }
+
+    .grid-wrapper {
+      margin-top: 12px;
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 18px;
+      justify-items: stretch;
+      align-items: stretch;
+    }
+
+    .card {
+      border-radius: 18px;
+      border: 1px solid #111827;
+      background: #ffffff;
+      min-height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+
+    .card-text {
+      font-weight: 800;
+      font-size: 1.2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      /* black outline */
+      text-shadow:
+        -1px -1px 0 #000,
+        1px -1px 0 #000,
+        -1px 1px 0 #000,
+        1px 1px 0 #000,
+        0 0 2px #000;
+    }
+
+    @media (min-width: 900px) {
+      .card {
+        min-height: 110px;
+      }
+
+      .card-text {
+        font-size: 1.5rem;
+      }
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .timer-label {
+      font-size: 0.9rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 600;
+    }
+
+    .timer {
+      font-variant-numeric: tabular-nums;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .results {
+      text-align: center;
+      margin-top: 16px;
+    }
+
+    .results .btn {
+      margin-top: 16px;
+    }
+
+    .results-main {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .results-detail {
+      font-size: 0.98rem;
+      color: #4b5563;
+      margin-bottom: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      margin-bottom: 10px;
+    }
+
+    .explanation-box {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      text-align: left;
+    }
+
+    .explanation-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+
+    .explanation-text {
+      font-size: 0.95rem;
+      color: #374151;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="lang-toggle" aria-label="Language switch">
+      <span class="lang-toggle-label">EN</span>
+      <label class="switch">
+        <input type="checkbox" id="langSwitch" />
+        <span class="slider"></span>
+      </label>
+      <span class="lang-toggle-label">DA</span>
+    </div>
+
+    <div class="title" id="appTitle"></div>
+    <div class="subtitle" id="appSubtitle"></div>
+
+    <div id="content" class="panel">
+      <!-- Dynamic content injected by JavaScript -->
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const COLORS = [
+        { id: "red", value: "#ef4444" },
+        { id: "blue", value: "#3b82f6" },
+        { id: "green", value: "#22c55e" },
+        { id: "yellow", value: "#eab308" },
+        { id: "orange", value: "#f97316" },
+        { id: "purple", value: "#a855f7" },
+        { id: "pink", value: "#ec4899" },
+        { id: "white", value: "#ffffff" }
+      ];
+
+      let state = "intro1";
+      let cards = null;
+      let timerInterval = null;
+      let elapsedMs = 0;
+      let time1 = null;
+      let time2 = null;
+      let lang = "en";
+
+      const contentEl = document.getElementById("content");
+      const langToggleEl = document.querySelector(".lang-toggle");
+
+      const STRINGS = {
+        en: {
+          appTitle: "Color Focus Game",
+          appSubtitle:
+            "A quick two-part challenge that plays with how your brain processes colors and words.",
+          introTag1: "Task One",
+          introTag2: "Task Two",
+          introInstruction1:
+            "For each rectangle say the color of the word. Do not say what is actually written.",
+          introInstruction2: "For each rectangle say the written text.",
+          introHint:
+            "Do it out loud and as quickly as you can. When you're ready, press Start and begin immediately.",
+          startTask1Btn: "Start task one",
+          startTask2Btn: "Start task two",
+          gridLabel1: "Say the color of each word",
+          gridLabel2: "Say the written text of each word",
+          timerLabel: "Elapsed time",
+          doneBtn: "Done!",
+          resultsTag: "Results",
+          resultsError:
+            "Oops, something went wrong with the timers. Please refresh the page to try again.",
+          resultsFirstLabel: "First task",
+          resultsSecondLabel: "Second task",
+          resultsFasterDetail: (sec) =>
+            `You were about ${sec} seconds faster on the second task.`,
+          resultsSlowerDetail: (sec) =>
+            `You took about ${sec} seconds longer on the second task.`,
+          resultsFasterSummary: (pct) =>
+            `The second task was about ${pct}% faster.`,
+          resultsSlowerSummary: (pct) =>
+            `The second task was slightly slower by about ${pct}% (still a great comparison!).`,
+          resultsExplanation:
+            "The first task forces your brain to fight the urge to read the word and focus only on the color, which is harder. When you switch to just reading the words, it usually feels much easier and faster.",
+          explanationBoxTitle: "Why the second task is easier",
+          explanationBoxBody:
+            "Reading words is a highly practiced, automatic skill for your brain. Naming the ink color is slower and needs more conscious control. In the first task these two processes conflict: the automatic urge to read the word interferes with focusing on the ink color (a classic \"Stroop effect\"). In the second task your automatic reading process and the instructions are aligned, so it feels much easier and faster.",
+          colorNames: {
+            red: "red",
+            blue: "blue",
+            green: "green",
+            yellow: "yellow",
+            orange: "orange",
+            purple: "purple",
+            pink: "pink",
+            white: "white"
+          },
+          restartBtn: "Play again"
+        },
+        da: {
+          appTitle: "Farvefokus-spil",
+          appSubtitle:
+            "En hurtig udfordring i to dele, der leger med hvordan din hjerne opfatter farver og ord.",
+          introTag1: "Opgave 1",
+          introTag2: "Opgave 2",
+          introInstruction1:
+            "For hver rektangel skal du sige farven på ordet. Sig ikke det, der faktisk står skrevet.",
+          introInstruction2:
+            "For hver rektangel skal du sige det ord, der står skrevet.",
+          introHint:
+            "Gør det højt og så hurtigt du kan. Når du er klar, trykker du på Start og begynder med det samme.",
+          startTask1Btn: "Start opgave 1",
+          startTask2Btn: "Start opgave 2",
+          gridLabel1: "Sig farven på hvert ord",
+          gridLabel2: "Sig det skrevne ord i hver firkant",
+          timerLabel: "Forløbet tid",
+          doneBtn: "Færdig!",
+          resultsTag: "Resultat",
+          resultsError:
+            "Noget gik galt med tidsmålingen. Genindlæs siden for at prøve igen.",
+          resultsFirstLabel: "Opgave 1",
+          resultsSecondLabel: "Opgave 2",
+          resultsFasterDetail: (sec) =>
+            `Du var cirka ${sec} sekunder hurtigere i den anden opgave.`,
+          resultsSlowerDetail: (sec) =>
+            `Du brugte cirka ${sec} sekunder længere i den anden opgave.`,
+          resultsFasterSummary: (pct) =>
+            `Den anden opgave var cirka ${pct}% hurtigere.`,
+          resultsSlowerSummary: (pct) =>
+            `Den anden opgave var en smule langsommere (ca. ${pct}%).`,
+          resultsExplanation:
+            "I den første opgave skal din hjerne undertrykke trangen til bare at læse ordet og i stedet fokusere på farven, hvilket er sværere. Når du skifter til kun at læse ordene, føles det som regel meget lettere og hurtigere.",
+          explanationBoxTitle: "Hvorfor den anden opgave er lettere",
+          explanationBoxBody:
+            "At læse ord er en meget indøvet og automatisk færdighed for hjernen. At sige selve farven på teksten går langsommere og kræver mere bevidst kontrol. I den første opgave er de to processer i konflikt: den automatiske trang til at læse ordet forstyrrer din evne til at fokusere på farven (det klassiske \"Stroop‑fænomen\"). I den anden opgave peger den automatiske læsning og instruktionen i samme retning, så det føles både lettere og hurtigere.",
+          colorNames: {
+            red: "rød",
+            blue: "blå",
+            green: "grøn",
+            yellow: "gul",
+            orange: "orange",
+            purple: "lilla",
+            pink: "lyserød",
+            white: "hvid"
+          },
+          restartBtn: "Spil igen"
+        }
+      };
+
+      function shuffle(array) {
+        const arr = array.slice();
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function updateLangToggleVisibility() {
+        if (!langToggleEl) return;
+        if (state === "intro1") {
+          langToggleEl.style.display = "inline-flex";
+        } else {
+          langToggleEl.style.display = "none";
+        }
+      }
+
+      function setState(newState) {
+        state = newState;
+        updateLangToggleVisibility();
+      }
+
+      function applyHeaderText() {
+        const s = STRINGS[lang];
+        const titleEl = document.getElementById("appTitle");
+        const subtitleEl = document.getElementById("appSubtitle");
+        if (titleEl) titleEl.textContent = s.appTitle;
+        if (subtitleEl) subtitleEl.textContent = s.appSubtitle;
+      }
+
+      function updateTextsForCurrentView() {
+        updateLangToggleVisibility();
+        if (state === "intro1") {
+          renderIntro(1);
+          return;
+        }
+        if (state === "intro2") {
+          renderIntro(2);
+          return;
+        }
+        if (state === "results") {
+          renderResults();
+          return;
+        }
+        if (state === "task1" || state === "task2") {
+          const s = STRINGS[lang];
+          const instructionsEl = document.querySelector(".instructions");
+          const timerLabelEl = document.querySelector(".timer-label");
+          const doneBtnEl = document.getElementById("doneBtn");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              (state === "task1" ? s.gridLabel1 : s.gridLabel2) + ".";
+          }
+          if (timerLabelEl) {
+            timerLabelEl.textContent = s.timerLabel;
+          }
+          if (doneBtnEl) {
+            doneBtnEl.textContent = s.doneBtn;
+          }
+        }
+      }
+
+      function setupLanguageSwitch() {
+        const switchEl = document.getElementById("langSwitch");
+        if (!switchEl) return;
+        switchEl.checked = lang === "da";
+        switchEl.addEventListener("change", () => {
+          lang = switchEl.checked ? "da" : "en";
+          applyHeaderText();
+          updateTextsForCurrentView();
+        });
+      }
+
+      function ensureCards() {
+        if (cards && cards.length === 16) {
+          return;
+        }
+        const generated = [];
+        for (let i = 0; i < 16; i++) {
+          const colorsShuffled = shuffle(COLORS);
+          const textColor = colorsShuffled[0];
+          const labelColor = colorsShuffled.find(c => c.id !== textColor.id);
+          generated.push({
+            labelId: labelColor.id,
+            colorId: textColor.id
+          });
+        }
+        cards = generated;
+      }
+
+      function formatTime(ms) {
+        const totalTenths = Math.round(ms / 100);
+        const seconds = Math.floor(totalTenths / 10);
+        const tenths = totalTenths % 10;
+        return seconds + "." + tenths.toString();
+      }
+
+      function stopTimer() {
+        if (timerInterval !== null) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+      }
+
+      function renderIntro(step) {
+        const isFirst = step === 1;
+        const s = STRINGS[lang];
+        const instruction = isFirst
+          ? s.introInstruction1
+          : s.introInstruction2;
+
+        contentEl.innerHTML = `
+          <div class="tag">${isFirst ? s.introTag1 : s.introTag2}</div>
+          <p class="instructions">
+            ${instruction}
+          </p>
+          <p class="hint">
+            ${s.introHint}
+          </p>
+          <div class="intro-actions">
+            <button class="btn" id="startBtn">${isFirst ? s.startTask1Btn : s.startTask2Btn}</button>
+          </div>
+        `;
+
+        document.getElementById("startBtn").addEventListener("click", () => {
+          setState(isFirst ? "task1" : "task2");
+          startTask(step);
+        });
+      }
+
+      function renderGrid(step) {
+        ensureCards();
+        const s = STRINGS[lang];
+        const cardsHtml = cards
+          .map(
+            (c) => {
+              const colorDef = COLORS.find(col => col.id === c.colorId);
+              const colorValue = colorDef ? colorDef.value : "#000000";
+              const labelText =
+                (s.colorNames && s.colorNames[c.labelId]) || c.labelId;
+              return `
+            <div class="card">
+              <span class="card-text" style="color: ${colorValue};">
+                ${labelText}
+              </span>
+            </div>
+          `;
+            }
+          )
+          .join("");
+
+        const label = step === 1
+          ? s.gridLabel1
+          : s.gridLabel2;
+
+        contentEl.innerHTML = `
+          <p class="instructions">${label}.</p>
+          <div class="grid-wrapper">
+            <div class="grid">
+              ${cardsHtml}
+            </div>
+          </div>
+          <div class="status-bar">
+            <div>
+              <div class="timer-label">${s.timerLabel}</div>
+              <div class="timer" id="timerDisplay">0.0</div>
+            </div>
+            <button class="btn btn-secondary" id="doneBtn">${s.doneBtn}</button>
+          </div>
+        `;
+
+        document.getElementById("doneBtn").addEventListener("click", () => {
+          stopTimer();
+          const time = elapsedMs;
+          if (step === 1) {
+            time1 = time;
+          } else {
+            time2 = time;
+          }
+
+          // brief pause before next screen
+          setTimeout(() => {
+            if (step === 1) {
+              setState("intro2");
+              renderIntro(2);
+            } else {
+              setState("results");
+              renderResults();
+            }
+          }, 1000);
+        });
+      }
+
+      function startTask(step) {
+        elapsedMs = 0;
+        renderGrid(step);
+
+        const timerDisplay = document.getElementById("timerDisplay");
+        timerDisplay.textContent = "0.0";
+
+        stopTimer();
+        timerInterval = setInterval(() => {
+          elapsedMs += 100;
+          timerDisplay.textContent = formatTime(elapsedMs);
+        }, 100);
+      }
+
+      function renderResults() {
+        if (time1 == null || time2 == null) {
+          const s = STRINGS[lang];
+          contentEl.innerHTML = `
+            <p class="instructions">
+              ${s.resultsError}
+            </p>
+          `;
+          return;
+        }
+
+        const s = STRINGS[lang];
+        const fasterMs = time1 - time2;
+        const easier = fasterMs > 0;
+        const absDiffSec = Math.abs(fasterMs) / 1000;
+        const percent = ((Math.abs(fasterMs) / time1) * 100).toFixed(1);
+        const absString = absDiffSec.toFixed(1);
+
+        const summaryText = easier
+          ? s.resultsFasterSummary(percent)
+          : s.resultsSlowerSummary(percent);
+
+        const explanationBoxHtml = easier
+          ? `
+            <div class="explanation-box">
+              <div class="explanation-title">${s.explanationBoxTitle}</div>
+              <div class="explanation-text">
+                ${s.explanationBoxBody}
+              </div>
+            </div>
+          `
+          : "";
+
+        contentEl.innerHTML = `
+          <div class="tag">${s.resultsTag}</div>
+          <div class="results">
+            <p class="results-main">
+              ${s.resultsFirstLabel}: ${formatTime(time1)} s &nbsp;·&nbsp;
+              ${s.resultsSecondLabel}: ${formatTime(time2)} s
+            </p>
+            <p class="results-detail">
+              ${easier
+                ? s.resultsFasterDetail(absString)
+                : s.resultsSlowerDetail(absString)}
+            </p>
+            <p class="results-detail">
+              ${summaryText}
+            </p>
+            <p class="hint">
+              ${s.resultsExplanation}
+            </p>
+            ${explanationBoxHtml}
+            <button class="btn" id="restartBtn">${s.restartBtn}</button>
+          </div>
+        `;
+
+        document.getElementById("restartBtn").addEventListener("click", () => {
+          setState("intro1");
+          cards = null; // regenerate a fresh grid
+          time1 = null;
+          time2 = null;
+          renderIntro(1);
+        });
+      }
+
+      // initial render
+      applyHeaderText();
+      setupLanguageSwitch();
+      renderIntro(1);
+      updateLangToggleVisibility();
+    })();
+  </script>
+</body>
+</html>
+

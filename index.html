@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Games</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --link: #38bdf8;
+      --link-hover: #7dd3fc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, #020617 0%, var(--bg) 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem 4rem;
+    }
+
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: 2rem;
+    }
+
+    p {
+      margin: 0 0 1.5rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+
+    .card {
+      display: block;
+      text-decoration: none;
+      background: var(--card);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1rem;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: var(--link);
+    }
+
+    .card-title {
+      margin: 0 0 0.25rem;
+      font-size: 1.1rem;
+      color: var(--link);
+    }
+
+    .card-link {
+      margin: 0;
+      color: var(--link-hover);
+      font-size: 0.95rem;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>AI Games</h1>
+    <p>Choose a game below. Each folder has its own <code>index.html</code> and can be visited directly.</p>
+
+    <section class="grid">
+      <a class="card" href="./colorgame/">
+        <h2 class="card-title">Color Game</h2>
+        <p class="card-link">/colorgame/</p>
+      </a>
+
+      <a class="card" href="./geometrydash/">
+        <h2 class="card-title">Geometry Dash</h2>
+        <p class="card-link">/geometrydash/</p>
+      </a>
+
+      <a class="card" href="./tictactoe/">
+        <h2 class="card-title">Tic Tac Toe</h2>
+        <p class="card-link">/tictactoe/</p>
+      </a>
+    </section>
+  </main>
+</body>
+</html>
