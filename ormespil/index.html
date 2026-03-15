@@ -541,8 +541,10 @@
           createdAt: firebase.database.ServerValue.TIMESTAMP
         });
         await trimLeaderboardToTopTen();
+        statusEl.textContent = `Leaderboard saved for ${playerName}.`;
       } catch (err) {
         console.error("Failed to save leaderboard entry.", err);
+        statusEl.textContent = "Could not save leaderboard entry (check Firebase rules).";
       }
     }
 
@@ -592,6 +594,11 @@
             });
             leaderboardEntries = rows;
             renderLeaderboard();
+          }, (err) => {
+            console.error("Failed to load leaderboard from Firebase.", err);
+            leaderboardEntries = [];
+            renderLeaderboard();
+            statusEl.textContent = "Firebase leaderboard unavailable (permissions/rules).";
           });
       } catch (err) {
         console.error("Firebase leaderboard unavailable, using local storage for best.", err);

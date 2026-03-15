@@ -35,7 +35,7 @@ Suggested starter rules:
           "$entryId": {
             ".read": true,
             ".write": true,
-            ".validate": "newData.hasChildren(['name','score']) && newData.child('name').isString() && newData.child('name').val().matches(/^[A-Z]{1,6}$/) && newData.child('score').isNumber() && newData.child('score').val() >= 0"
+            ".validate": "newData.val() == null || (newData.hasChildren(['name','score']) && newData.child('name').isString() && newData.child('name').val().matches(/^[A-Z]{1,6}$/) && newData.child('score').isNumber() && newData.child('score').val() >= 0 && (!newData.child('createdAt').exists() || newData.child('createdAt').isNumber()))"
           }
         }
       }
