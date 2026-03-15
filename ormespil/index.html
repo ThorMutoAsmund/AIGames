@@ -40,6 +40,7 @@
       border-radius: 14px;
       padding: 18px;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+      position: relative;
     }
 
     h1 {
@@ -142,6 +143,128 @@
       font-weight: 700;
     }
 
+    .leaderboard {
+      margin-top: 14px;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      background: #0b1220;
+      padding: 10px 12px;
+    }
+
+    .leaderboard h2 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+      color: #c4b5fd;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .leaderboard-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 5px;
+    }
+
+    .leaderboard-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.92rem;
+      color: #dbeafe;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .leaderboard-empty {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+
+    .name-modal {
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      background: rgba(2, 6, 23, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 5;
+    }
+
+    .name-modal.show {
+      display: flex;
+    }
+
+    .name-modal-card {
+      width: min(360px, 100%);
+      background: #0b1220;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+    }
+
+    .name-modal-title {
+      margin: 0 0 6px;
+      color: #c4b5fd;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .name-modal-text {
+      margin: 0 0 10px;
+      color: #cbd5e1;
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+
+    .name-modal-input {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      background: #111827;
+      color: #e2e8f0;
+      font-size: 1rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 10px 11px;
+      outline: none;
+    }
+
+    .name-modal-input:focus {
+      border-color: #818cf8;
+      box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.25);
+    }
+
+    .name-modal-error {
+      min-height: 1.2em;
+      margin-top: 7px;
+      font-size: 0.84rem;
+      color: #fca5a5;
+    }
+
+    .name-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .modal-btn {
+      border-radius: 8px;
+      text-transform: none;
+      letter-spacing: 0.02em;
+      padding: 8px 12px;
+      font-size: 0.88rem;
+    }
+
+    .modal-btn-save {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #052e16;
+    }
+
     button:disabled {
       cursor: not-allowed;
       opacity: 0.55;
@@ -162,7 +285,7 @@
 
     <div class="hud">
       <div class="score">Score: <span id="score">0</span></div>
-      <div class="best"><span id="bestScope">Best</span>: <span id="best">0</span></div>
+      <div class="best">Best: <span id="best">0</span></div>
     </div>
 
     <canvas id="board" width="400" height="400" aria-label="Snake board"></canvas>
@@ -170,6 +293,26 @@
     <div class="controls">
       <button id="startBtn" class="start-btn">Start</button>
       <button id="restartBtn" class="restart-btn">Restart</button>
+    </div>
+
+    <section class="leaderboard" aria-live="polite">
+      <h2>Global leaderboard</h2>
+      <ul id="leaderboardList" class="leaderboard-list">
+        <li class="leaderboard-empty">Loading...</li>
+      </ul>
+    </section>
+
+    <div id="nameModal" class="name-modal" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
+      <div class="name-modal-card">
+        <h3 id="nameModalTitle" class="name-modal-title">Leaderboard entry</h3>
+        <p class="name-modal-text">You made top 10. Enter a name (1-6 letters):</p>
+        <input id="nameModalInput" class="name-modal-input" type="text" maxlength="6" autocomplete="off" />
+        <div id="nameModalError" class="name-modal-error"></div>
+        <div class="name-modal-actions">
+          <button id="nameModalCancel" class="modal-btn">Skip</button>
+          <button id="nameModalSave" class="modal-btn modal-btn-save">Save</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -179,15 +322,21 @@
   <script>
     const GRID_SIZE = 20;
     const STEP_MS = 120;
+    const SPECIAL_FOOD_SPAWN_CHANCE = 0.16;
 
     const canvas = document.getElementById("board");
     const ctx = canvas.getContext("2d");
     const statusEl = document.getElementById("status");
     const scoreEl = document.getElementById("score");
     const bestEl = document.getElementById("best");
-    const bestScopeEl = document.getElementById("bestScope");
     const startBtn = document.getElementById("startBtn");
     const restartBtn = document.getElementById("restartBtn");
+    const leaderboardListEl = document.getElementById("leaderboardList");
+    const nameModalEl = document.getElementById("nameModal");
+    const nameModalInputEl = document.getElementById("nameModalInput");
+    const nameModalErrorEl = document.getElementById("nameModalError");
+    const nameModalCancelEl = document.getElementById("nameModalCancel");
+    const nameModalSaveEl = document.getElementById("nameModalSave");
 
     let snake;
     let dir;
@@ -198,9 +347,12 @@
     let running;
     let isGameOver;
     let explosionParticles;
+    let specialFood;
     let timer;
-    let bestSource;
-    let firebaseBestRef;
+    let firebaseLeaderboardRef;
+    let leaderboardEntries;
+    let pendingLeaderboardPromptTimer;
+    let leaderboardPromptOpen;
 
     function setupGame() {
       const center = Math.floor(GRID_SIZE / 2);
@@ -216,6 +368,12 @@
       running = false;
       isGameOver = false;
       explosionParticles = [];
+      specialFood = null;
+      if (pendingLeaderboardPromptTimer) {
+        clearTimeout(pendingLeaderboardPromptTimer);
+        pendingLeaderboardPromptTimer = null;
+      }
+      closeLeaderboardModal();
       if (timer) {
         clearInterval(timer);
         timer = null;
@@ -230,7 +388,162 @@
     function updateHud() {
       scoreEl.textContent = String(score);
       bestEl.textContent = String(best);
-      bestScopeEl.textContent = bestSource === "firebase" ? "Global best" : "Local best";
+    }
+
+    function renderLeaderboard() {
+      if (!leaderboardListEl) {
+        return;
+      }
+      if (leaderboardEntries.length === 0) {
+        leaderboardListEl.innerHTML = '<li class="leaderboard-empty">No scores yet.</li>';
+        return;
+      }
+
+      leaderboardListEl.innerHTML = leaderboardEntries
+        .slice(0, 10)
+        .map((entry, index) => {
+          const safeName = String(entry.name || "UNKNOWN").toUpperCase().slice(0, 6);
+          const safeScore = Number(entry.score || 0);
+          return `
+            <li class="leaderboard-row">
+              <span>#${index + 1} ${safeName}</span>
+              <span>${safeScore}</span>
+            </li>
+          `;
+        })
+        .join("");
+    }
+
+    function closeLeaderboardModal() {
+      leaderboardPromptOpen = false;
+      nameModalEl.classList.remove("show");
+      nameModalInputEl.value = "";
+      nameModalErrorEl.textContent = "";
+    }
+
+    function openLeaderboardModal() {
+      leaderboardPromptOpen = true;
+      nameModalEl.classList.add("show");
+      nameModalErrorEl.textContent = "";
+      nameModalInputEl.value = "";
+      nameModalInputEl.focus();
+
+      return new Promise((resolve) => {
+        const cleanup = () => {
+          nameModalSaveEl.removeEventListener("click", handleSave);
+          nameModalCancelEl.removeEventListener("click", handleCancel);
+          nameModalInputEl.removeEventListener("keydown", handleKeyDown);
+          nameModalInputEl.removeEventListener("input", handleInput);
+        };
+
+        const finish = (value) => {
+          cleanup();
+          closeLeaderboardModal();
+          resolve(value);
+        };
+
+        const handleInput = () => {
+          const cleaned = nameModalInputEl.value.toUpperCase().replace(/[^A-Z]/g, "");
+          if (cleaned !== nameModalInputEl.value) {
+            nameModalInputEl.value = cleaned;
+          }
+        };
+
+        const handleSave = () => {
+          const cleaned = nameModalInputEl.value.trim().toUpperCase().replace(/[^A-Z]/g, "");
+          if (!/^[A-Z]{1,6}$/.test(cleaned)) {
+            nameModalErrorEl.textContent = "Use 1 to 6 letters (A-Z).";
+            return;
+          }
+          finish(cleaned);
+        };
+
+        const handleCancel = () => {
+          finish(null);
+        };
+
+        const handleKeyDown = (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            handleSave();
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            handleCancel();
+          }
+        };
+
+        nameModalSaveEl.addEventListener("click", handleSave);
+        nameModalCancelEl.addEventListener("click", handleCancel);
+        nameModalInputEl.addEventListener("keydown", handleKeyDown);
+        nameModalInputEl.addEventListener("input", handleInput);
+      });
+    }
+
+    function qualifiesForLeaderboard(scoreValue) {
+      if (scoreValue <= 0) {
+        return false;
+      }
+      if (leaderboardEntries.length < 10) {
+        return true;
+      }
+      const lowestTopScore = Number(leaderboardEntries[leaderboardEntries.length - 1].score || 0);
+      return scoreValue >= lowestTopScore;
+    }
+
+    async function trimLeaderboardToTopTen() {
+      if (!firebaseLeaderboardRef) {
+        return;
+      }
+      const snapshot = await firebaseLeaderboardRef.once("value");
+      const rows = [];
+      snapshot.forEach((child) => {
+        rows.push({
+          key: child.key,
+          name: child.child("name").val(),
+          score: Number(child.child("score").val() || 0),
+          createdAt: Number(child.child("createdAt").val() || 0)
+        });
+      });
+
+      rows.sort((a, b) => {
+        const scoreDiff = b.score - a.score;
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+        const createdDiff = a.createdAt - b.createdAt;
+        if (createdDiff !== 0) {
+          return createdDiff;
+        }
+        return String(a.key).localeCompare(String(b.key));
+      });
+
+      const rowsToRemove = rows.slice(10);
+      await Promise.all(
+        rowsToRemove.map((entry) => firebaseLeaderboardRef.child(entry.key).remove())
+      );
+    }
+
+    async function submitLeaderboardEntry(scoreValue) {
+      if (!firebaseLeaderboardRef || scoreValue <= 0) {
+        return;
+      }
+
+      const playerName = await openLeaderboardModal();
+      if (!playerName) {
+        return;
+      }
+
+      try {
+        await firebaseLeaderboardRef.push({
+          name: playerName,
+          score: scoreValue,
+          createdAt: firebase.database.ServerValue.TIMESTAMP
+        });
+        await trimLeaderboardToTopTen();
+      } catch (err) {
+        console.error("Failed to save leaderboard entry.", err);
+      }
     }
 
     function loadLocalBest() {
@@ -242,7 +555,6 @@
     }
 
     async function initializeBestScore() {
-      bestSource = "local";
       best = loadLocalBest();
       updateHud();
 
@@ -261,27 +573,32 @@
           firebase.initializeApp(window.FIREBASE_CONFIG);
         }
         const db = firebase.database();
-        firebaseBestRef = db.ref("scores/ormespil/highscore");
+        firebaseLeaderboardRef = db.ref("scores/ormespil/leaderboard");
 
-        const snapshot = await firebaseBestRef.once("value");
-        const globalBest = Number(snapshot.val() || 0);
-        if (globalBest > best) {
-          best = globalBest;
-        }
-        bestSource = "firebase";
-        updateHud();
-
-        firebaseBestRef.on("value", (snap) => {
-          const liveBest = Number(snap.val() || 0);
-          if (liveBest !== best) {
-            best = liveBest;
-            updateHud();
-          }
-        });
+        firebaseLeaderboardRef
+          .orderByChild("score")
+          .limitToLast(10)
+          .on("value", (snap) => {
+            const rows = [];
+            snap.forEach((child) => {
+              rows.push(child.val());
+            });
+            rows.sort((a, b) => {
+              const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+              if (scoreDiff !== 0) {
+                return scoreDiff;
+              }
+              return Number(a.createdAt || 0) - Number(b.createdAt || 0);
+            });
+            leaderboardEntries = rows;
+            renderLeaderboard();
+          });
       } catch (err) {
-        console.error("Firebase highscore unavailable, using local storage.", err);
-        bestSource = "local";
+        console.error("Firebase leaderboard unavailable, using local storage for best.", err);
         best = loadLocalBest();
+        firebaseLeaderboardRef = null;
+        leaderboardEntries = [];
+        renderLeaderboard();
         updateHud();
       }
     }
@@ -290,28 +607,6 @@
       if (candidateScore <= best) {
         return;
       }
-
-      if (bestSource === "firebase" && firebaseBestRef) {
-        const previousBest = best;
-        firebaseBestRef.transaction((currentValue) => {
-          const current = Number(currentValue || 0);
-          return candidateScore > current ? candidateScore : current;
-        }, (error, committed, snapshot) => {
-          if (error || !committed) {
-            return;
-          }
-          const txBest = Number(snapshot.val() || 0);
-          if (txBest > previousBest) {
-            console.log(`[ormespil] Firebase highscore updated: ${previousBest} -> ${txBest}`);
-          }
-          if (txBest > best) {
-            best = txBest;
-            updateHud();
-          }
-        });
-        return;
-      }
-
       best = candidateScore;
       saveLocalBest(best);
       updateHud();
@@ -324,10 +619,75 @@
           y: Math.floor(Math.random() * GRID_SIZE)
         };
         const onSnake = snake && snake.some((part) => part.x === candidate.x && part.y === candidate.y);
-        if (!onSnake) {
+        const overlapsSpecial =
+          specialFood &&
+          specialFood.active &&
+          Math.hypot(candidate.x - specialFood.x, candidate.y - specialFood.y) < 0.9;
+        if (!onSnake && !overlapsSpecial) {
           return candidate;
         }
       }
+    }
+
+    function updateSpecialFoodPosition() {
+      if (!specialFood || !specialFood.active) {
+        return;
+      }
+      specialFood.x = specialFood.originX + Math.cos(specialFood.angle) * specialFood.radius;
+      specialFood.y = specialFood.originY + Math.sin(specialFood.angle) * specialFood.radius;
+    }
+
+    function spawnSpecialFood() {
+      if (specialFood && specialFood.active) {
+        return;
+      }
+      const center = (GRID_SIZE - 1) / 2;
+      specialFood = {
+        active: true,
+        originX: center,
+        originY: center,
+        angle: Math.random() * Math.PI * 2,
+        radius: 0.6,
+        radialSpeed: 0.12,
+        angularSpeed: 0.45,
+        x: center,
+        y: center
+      };
+      updateSpecialFoodPosition();
+    }
+
+    function advanceSpecialFood() {
+      if (!specialFood || !specialFood.active) {
+        return;
+      }
+      specialFood.angle += specialFood.angularSpeed;
+      specialFood.radius += specialFood.radialSpeed;
+      updateSpecialFoodPosition();
+
+      const waterEdge = 0.35;
+      if (
+        specialFood.x <= waterEdge ||
+        specialFood.y <= waterEdge ||
+        specialFood.x >= GRID_SIZE - 1 - waterEdge ||
+        specialFood.y >= GRID_SIZE - 1 - waterEdge
+      ) {
+        specialFood.active = false;
+      }
+    }
+
+    function tryCollectSpecialFood(head) {
+      if (!specialFood || !specialFood.active) {
+        return false;
+      }
+      const caught = Math.hypot(head.x - specialFood.x, head.y - specialFood.y) <= 0.75;
+      if (!caught) {
+        return false;
+      }
+      specialFood.active = false;
+      score += 5;
+      updateBest(score);
+      statusEl.textContent = "Special spiral dot caught! +5 points.";
+      return true;
     }
 
     function sameCell(a, b) {
@@ -346,6 +706,7 @@
           break;
         }
       }
+      advanceSpecialFood();
       const head = snake[0];
       const newHead = { x: head.x + dir.x, y: head.y + dir.y };
 
@@ -368,12 +729,18 @@
 
       snake.unshift(newHead);
 
+      let ateNormalFood = false;
       if (sameCell(newHead, food)) {
         score += 1;
         updateBest(score);
         food = spawnFood();
+        ateNormalFood = true;
       } else {
         snake.pop();
+      }
+      tryCollectSpecialFood(newHead);
+      if (ateNormalFood && (!specialFood || !specialFood.active) && Math.random() < SPECIAL_FOOD_SPAWN_CHANCE) {
+        spawnSpecialFood();
       }
 
       updateHud();
@@ -390,6 +757,9 @@
       const size = canvas.width / GRID_SIZE;
       ctx.fillStyle = "#1f2937";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3);
       ctx.strokeStyle = "#334155";
       ctx.lineWidth = 1;
       for (let i = 0; i <= GRID_SIZE; i += 1) {
@@ -408,6 +778,21 @@
     function draw() {
       drawGrid();
       drawCell(food.x, food.y, "#f59e0b", 4);
+      if (specialFood && specialFood.active) {
+        const size = canvas.width / GRID_SIZE;
+        const centerX = (specialFood.x + 0.5) * size;
+        const centerY = (specialFood.y + 0.5) * size;
+        const coreRadius = size * 0.2;
+        const glowRadius = size * 0.33;
+        ctx.fillStyle = "rgba(129, 140, 248, 0.35)";
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#a78bfa";
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, coreRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
       for (let i = snake.length - 1; i >= 0; i -= 1) {
         const part = snake[i];
         const isHead = i === 0;
@@ -461,6 +846,15 @@
       statusEl.textContent = `Game over - snake exploded. You ate ${score} dot${score === 1 ? "" : "s"}. Press Restart to try again.`;
       statusEl.classList.add("dead");
       draw();
+
+      if (qualifiesForLeaderboard(score)) {
+        pendingLeaderboardPromptTimer = setTimeout(() => {
+          pendingLeaderboardPromptTimer = null;
+          if (isGameOver && !leaderboardPromptOpen) {
+            submitLeaderboardEntry(score);
+          }
+        }, 1000);
+      }
     }
 
     function setDirection(x, y) {
@@ -499,8 +893,11 @@
     restartBtn.addEventListener("click", setupGame);
 
     best = 0;
-    bestSource = "local";
-    firebaseBestRef = null;
+    firebaseLeaderboardRef = null;
+    leaderboardEntries = [];
+    pendingLeaderboardPromptTimer = null;
+    leaderboardPromptOpen = false;
+    renderLeaderboard();
     initializeBestScore();
     setupGame();
   </script>

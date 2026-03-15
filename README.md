@@ -16,13 +16,13 @@ Static multi-game site where each game lives in its own folder and is served fro
 3. Add a link to that folder in root `index.html`.
 4. Commit and push.
 
-## Firebase global high score for Ormespil
+## Firebase leaderboard for Ormespil
 
-To enable one shared high score for everyone in `ormespil`:
+To enable a shared leaderboard for everyone in `ormespil`:
 
 1. Copy `ormespil/firebase-config.example.js` to `ormespil/firebase-config.js`.
 2. Fill in your Firebase project values in that file.
-3. In Firebase Realtime Database rules, allow read + controlled write for the snake score path.
+3. In Firebase Realtime Database rules, allow read + validated write for the leaderboard path.
 
 Suggested starter rules:
 
@@ -31,10 +31,12 @@ Suggested starter rules:
   "rules": {
     "scores": {
       "ormespil": {
-        "highscore": {
-          ".read": true,
-          ".write": true,
-          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.exists() || newData.val() >= data.val())"
+        "leaderboard": {
+          "$entryId": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.hasChildren(['name','score']) && newData.child('name').isString() && newData.child('name').val().matches(/^[A-Z]{1,6}$/) && newData.child('score').isNumber() && newData.child('score').val() >= 0"
+          }
         }
       }
     }
