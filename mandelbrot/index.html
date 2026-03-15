@@ -61,6 +61,10 @@
       cursor: crosshair;
     }
 
+    canvas.dragging {
+      cursor: grabbing;
+    }
+
     .controls {
       margin-top: 12px;
       display: flex;
@@ -184,7 +188,7 @@
 <body>
   <main class="app">
     <h1>Mandelbrot Zoomer</h1>
-    <p class="hint">Scroll wheel to zoom at mouse position. Use Reset to go back.</p>
+    <p class="hint">Scroll wheel to zoom at mouse position. Click and drag to pan. Use Reset to go back.</p>
     <canvas id="view" width="960" height="600" aria-label="Mandelbrot renderer"></canvas>
     <div class="meta-row">
       <button id="copyBtn" class="mini-btn">Copy</button>
@@ -232,6 +236,9 @@
     let spanX = INITIAL_SPAN_X;
     let drawToken = 0;
     let aaTimer = null;
+    let isDragging = false;
+    let dragLastX = 0;
+    let dragLastY = 0;
 
     function clamp(v, min, max) {
       return Math.max(min, Math.min(max, v));
@@ -596,6 +603,48 @@
       spanX = newSpanX;
       scheduleDraw();
     }, { passive: false });
+
+    canvas.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      isDragging = true;
+      dragLastX = event.clientX;
+      dragLastY = event.clientY;
+      canvas.classList.add("dragging");
+      event.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      if (!isDragging) {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const dxCss = event.clientX - dragLastX;
+      const dyCss = event.clientY - dragLastY;
+      dragLastX = event.clientX;
+      dragLastY = event.clientY;
+
+      const pxPerUnitX = canvas.clientWidth / spanX;
+      const spanY = spanX * (canvas.height / canvas.width);
+      const pxPerUnitY = canvas.clientHeight / spanY;
+      if (pxPerUnitX <= 0 || pxPerUnitY <= 0 || !rect.width || !rect.height) {
+        return;
+      }
+
+      centerX -= dxCss / pxPerUnitX;
+      centerY += dyCss / pxPerUnitY;
+      scheduleDraw();
+      event.preventDefault();
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!isDragging) {
+        return;
+      }
+      isDragging = false;
+      canvas.classList.remove("dragging");
+    });
 
     resetBtn.addEventListener("click", resetView);
     randomBtn.addEventListener("click", () => {
