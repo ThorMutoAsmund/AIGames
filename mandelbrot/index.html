@@ -109,23 +109,18 @@
     const INITIAL_CENTER_X = -0.5;
     const INITIAL_CENTER_Y = 0.0;
     const INITIAL_SPAN_X = 3.2;
+    const PALETTE_SIZE = 1024;
+    const MAX_ITER_HARD = 1024;
 
     const canvas = document.getElementById("view");
-    const ctx = canvas.getContext("2d");
     const resetBtn = document.getElementById("resetBtn");
     const randomBtn = document.getElementById("randomBtn");
     const metaEl = document.getElementById("meta");
-    const tempCanvas = document.createElement("canvas");
-    const tempCtx = tempCanvas.getContext("2d");
-    const previewCanvas = document.createElement("canvas");
-    const previewCtx = previewCanvas.getContext("2d");
 
     let centerX = INITIAL_CENTER_X;
     let centerY = INITIAL_CENTER_Y;
     let spanX = INITIAL_SPAN_X;
-    let palette = [];
-    let renderToken = 0;
-    let fullRenderTimer = null;
+    let drawToken = 0;
     let aaTimer = null;
 
     function clamp(v, min, max) {
@@ -143,7 +138,7 @@
 
     function randomGradientStops() {
       const stops = [];
-      const count = 4 + Math.floor(Math.random() * 3); // 4..6 stops
+      const count = 4 + Math.floor(Math.random() * 3);
       for (let i = 0; i < count; i += 1) {
         stops.push({
           t: i / (count - 1),
@@ -157,9 +152,9 @@
       return a + (b - a) * t;
     }
 
-    function buildPalette(size = 768) {
+    function buildPalette(size = PALETTE_SIZE) {
       const stops = randomGradientStops();
-      const out = new Array(size);
+      const out = new Uint8Array(size * 3);
       for (let i = 0; i < size; i += 1) {
         const t = i / (size - 1);
         let j = 0;
@@ -170,11 +165,13 @@
         const right = stops[j + 1];
         const range = right.t - left.t || 1;
         const localT = clamp((t - left.t) / range, 0, 1);
-        out[i] = [
-          Math.round(lerp(left.rgb[0], right.rgb[0], localT)),
-          Math.round(lerp(left.rgb[1], right.rgb[1], localT)),
-          Math.round(lerp(left.rgb[2], right.rgb[2], localT))
-        ];
+        const r = Math.round(lerp(left.rgb[0], right.rgb[0], localT));
+        const g = Math.round(lerp(left.rgb[1], right.rgb[1], localT));
+        const b = Math.round(lerp(left.rgb[2], right.rgb[2], localT));
+        const idx = i * 3;
+        out[idx] = r;
+        out[idx + 1] = g;
+        out[idx + 2] = b;
       }
       return out;
     }
@@ -183,13 +180,13 @@
       const spanY = spanX * (height / width);
       return {
         x: centerX + (px / width - 0.5) * spanX,
-        y: centerY + (py / height - 0.5) * spanY
+        y: centerY + ((1 - py / height) - 0.5) * spanY
       };
     }
 
     function maxIterations() {
       const zoomFactor = INITIAL_SPAN_X / spanX;
-      return clamp(Math.floor(90 + Math.log10(zoomFactor + 1) * 80), 90, 800);
+      return clamp(Math.floor(90 + Math.log10(zoomFactor + 1) * 80), 90, 900);
     }
 
     function updateMeta() {
@@ -198,228 +195,212 @@
       metaEl.textContent = `Center: (${centerX.toFixed(12)}, ${centerY.toFixed(12)})  |  Zoom: ${zoom.toFixed(2)}x  |  Max iterations: ${iter}`;
     }
 
-    function showZoomPreview(px, py, factor) {
-      const width = canvas.width;
-      const height = canvas.height;
-      if (width < 2 || height < 2) {
-        return;
-      }
-      const scale = 1 / factor;
-      previewCanvas.width = width;
-      previewCanvas.height = height;
-      previewCtx.drawImage(canvas, 0, 0);
-      const drawW = width * scale;
-      const drawH = height * scale;
-      const dx = px - px * scale;
-      const dy = py - py * scale;
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, width, height);
-      ctx.drawImage(previewCanvas, 0, 0, width, height, dx, dy, drawW, drawH);
+    const gl = canvas.getContext("webgl", {
+      antialias: false,
+      alpha: false,
+      depth: false,
+      stencil: false,
+      preserveDrawingBuffer: false
+    });
+
+    if (!gl) {
+      metaEl.textContent = "WebGL not available in this browser/device.";
+      throw new Error("WebGL not available");
     }
 
-    function renderMandelbrotImageAsync(renderW, renderH, maxIter, token, onDone, rowsPerChunk = 6) {
-      if (token !== renderToken) {
-        return;
+    const vertexSrc = `
+      attribute vec2 aPos;
+      varying vec2 vUv;
+      void main() {
+        vUv = aPos * 0.5 + 0.5;
+        gl_Position = vec4(aPos, 0.0, 1.0);
       }
-      const width = canvas.width;
-      const height = canvas.height;
-      const xStep = spanX / renderW;
-      const spanY = spanX * (height / width);
-      const yStep = spanY / renderH;
-      const xStart = centerX - spanX * 0.5;
-      const yStart = centerY - spanY * 0.5;
-      const image = tempCtx.createImageData(renderW, renderH);
-      const data = image.data;
-      const log2 = Math.log(2);
-      let py = 0;
+    `;
 
-      function renderChunk() {
-        if (token !== renderToken) {
-          return;
-        }
-        const yEnd = Math.min(renderH, py + rowsPerChunk);
-        for (; py < yEnd; py += 1) {
-          const cy = yStart + py * yStep;
-          let cx = xStart;
-          for (let px = 0; px < renderW; px += 1) {
-            let x = 0;
-            let y = 0;
-            let iter = 0;
+    const fragmentSrc = `
+      precision highp float;
+      varying vec2 vUv;
 
-            while (x * x + y * y <= 4 && iter < maxIter) {
-              const xx = x * x - y * y + cx;
-              y = 2 * x * y + cy;
-              x = xx;
-              iter += 1;
-            }
+      uniform vec2 uCenter;
+      uniform float uSpanX;
+      uniform float uAspect;
+      uniform int uMaxIter;
+      uniform sampler2D uPalette;
+      uniform vec2 uInvResolution;
+      uniform int uUseAA;
 
-            const i = (py * renderW + px) * 4;
-            if (iter >= maxIter) {
-              data[i] = 0;
-              data[i + 1] = 0;
-              data[i + 2] = 0;
-              data[i + 3] = 255;
-              cx += xStep;
-              continue;
-            }
+      const int MAX_ITER_HARD = ${MAX_ITER_HARD};
 
-            const mag2 = x * x + y * y;
-            const smooth = iter + 1 - Math.log(Math.log(Math.max(mag2, 1e-9))) / log2;
-            const idx = Math.abs(Math.floor(smooth * 6)) % palette.length;
-            const color = palette[idx];
-            data[i] = color[0];
-            data[i + 1] = color[1];
-            data[i + 2] = color[2];
-            data[i + 3] = 255;
-            cx += xStep;
+      vec3 colorAt(vec2 uv) {
+        float cx = uCenter.x + (uv.x - 0.5) * uSpanX;
+        float cy = uCenter.y + (uv.y - 0.5) * (uSpanX * uAspect);
+        float x = 0.0;
+        float y = 0.0;
+        int i = 0;
+        for (int iter = 0; iter < MAX_ITER_HARD; iter++) {
+          if (iter >= uMaxIter) {
+            i = iter;
+            break;
           }
-        }
-
-        if (py < renderH) {
-          setTimeout(renderChunk, 0);
-          return;
-        }
-        if (token !== renderToken) {
-          return;
-        }
-        onDone(image);
-      }
-
-      renderChunk();
-    }
-
-    function downsample2xAsync(superImage, outW, outH, token, onDone, rowsPerChunk = 8) {
-      if (token !== renderToken) {
-        return;
-      }
-      const src = superImage.data;
-      const superW = superImage.width;
-      const dstImage = ctx.createImageData(outW, outH);
-      const dst = dstImage.data;
-      let y = 0;
-
-      function chunk() {
-        if (token !== renderToken) {
-          return;
-        }
-        const yEnd = Math.min(outH, y + rowsPerChunk);
-        for (; y < yEnd; y += 1) {
-          for (let x = 0; x < outW; x += 1) {
-            const i = (y * outW + x) * 4;
-            const s = ((y * 2) * superW + (x * 2)) * 4;
-            const iRight = s + 4;
-            const iDown = s + superW * 4;
-            const iDiag = iDown + 4;
-            dst[i] = (src[s] + src[iRight] + src[iDown] + src[iDiag]) >> 2;
-            dst[i + 1] = (src[s + 1] + src[iRight + 1] + src[iDown + 1] + src[iDiag + 1]) >> 2;
-            dst[i + 2] = (src[s + 2] + src[iRight + 2] + src[iDown + 2] + src[iDiag + 2]) >> 2;
-            dst[i + 3] = 255;
+          float xx = x * x - y * y + cx;
+          y = 2.0 * x * y + cy;
+          x = xx;
+          if (x * x + y * y > 4.0) {
+            i = iter;
+            break;
           }
+          i = iter + 1;
         }
-        if (y < outH) {
-          setTimeout(chunk, 0);
-          return;
+
+        if (i >= uMaxIter) {
+          return vec3(0.0);
         }
-        if (token !== renderToken) {
-          return;
-        }
-        onDone(dstImage);
+
+        float mag2 = x * x + y * y;
+        float smooth = float(i) + 1.0 - log(log(max(mag2, 1e-9))) / log(2.0);
+        float t = fract(abs(smooth * 0.02));
+        return texture2D(uPalette, vec2(t, 0.5)).rgb;
       }
 
-      chunk();
+      void main() {
+        if (uUseAA == 0) {
+          gl_FragColor = vec4(colorAt(vUv), 1.0);
+          return;
+        }
+
+        vec2 px = uInvResolution;
+        vec3 c0 = colorAt(vUv + vec2(-0.25 * px.x, -0.25 * px.y));
+        vec3 c1 = colorAt(vUv + vec2( 0.25 * px.x, -0.25 * px.y));
+        vec3 c2 = colorAt(vUv + vec2(-0.25 * px.x,  0.25 * px.y));
+        vec3 c3 = colorAt(vUv + vec2( 0.25 * px.x,  0.25 * px.y));
+        vec3 color = (c0 + c1 + c2 + c3) * 0.25;
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+
+    function compileShader(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const info = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(info || "Shader compile failed");
+      }
+      return shader;
     }
 
-    function renderAtScale(scale, token, onDone) {
-      if (token !== renderToken) {
-        return;
+    function linkProgram(vs, fs) {
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        const info = gl.getProgramInfoLog(prog);
+        gl.deleteProgram(prog);
+        throw new Error(info || "Program link failed");
       }
-      const width = canvas.width;
-      const height = canvas.height;
-      const renderW = Math.max(1, Math.floor(width * scale));
-      const renderH = Math.max(1, Math.floor(height * scale));
-      renderMandelbrotImageAsync(renderW, renderH, maxIterations(), token, (image) => {
-        if (token !== renderToken) {
-          return;
-        }
-        tempCanvas.width = renderW;
-        tempCanvas.height = renderH;
-        tempCtx.putImageData(image, 0, 0);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(tempCanvas, 0, 0, renderW, renderH, 0, 0, width, height);
-        if (onDone) {
-          onDone();
-        }
-      });
+      return prog;
     }
 
-    function renderSupersampledAntialias(token) {
-      if (token !== renderToken) {
-        return;
-      }
-      const width = canvas.width;
-      const height = canvas.height;
-      const superW = width * 2;
-      const superH = height * 2;
-      renderMandelbrotImageAsync(
-        superW,
-        superH,
-        clamp(Math.floor(maxIterations() * 1.2), 120, 1400),
-        token,
-        (superImage) => {
-          if (token !== renderToken) {
-            return;
-          }
-          downsample2xAsync(superImage, width, height, token, (dstImage) => {
-            if (token !== renderToken) {
-              return;
-            }
-            ctx.putImageData(dstImage, 0, 0);
-          }, 12);
-        },
-        2
+    const vs = compileShader(gl.VERTEX_SHADER, vertexSrc);
+    const fs = compileShader(gl.FRAGMENT_SHADER, fragmentSrc);
+    const program = linkProgram(vs, fs);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    gl.useProgram(program);
+
+    const aPosLoc = gl.getAttribLocation(program, "aPos");
+    const uCenterLoc = gl.getUniformLocation(program, "uCenter");
+    const uSpanXLoc = gl.getUniformLocation(program, "uSpanX");
+    const uAspectLoc = gl.getUniformLocation(program, "uAspect");
+    const uMaxIterLoc = gl.getUniformLocation(program, "uMaxIter");
+    const uPaletteLoc = gl.getUniformLocation(program, "uPalette");
+    const uInvResolutionLoc = gl.getUniformLocation(program, "uInvResolution");
+    const uUseAALoc = gl.getUniformLocation(program, "uUseAA");
+
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1
+      ]),
+      gl.STATIC_DRAW
+    );
+    gl.enableVertexAttribArray(aPosLoc);
+    gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+    const paletteTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.uniform1i(uPaletteLoc, 0);
+
+    function uploadPalette() {
+      const palette = buildPalette();
+      gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGB,
+        PALETTE_SIZE,
+        1,
+        0,
+        gl.RGB,
+        gl.UNSIGNED_BYTE,
+        palette
       );
     }
 
-    function scheduleRender() {
-      renderToken += 1;
-      const token = renderToken;
-      updateMeta();
-      if (fullRenderTimer !== null) {
-        clearTimeout(fullRenderTimer);
-        fullRenderTimer = null;
+    function draw(aaEnabled = false) {
+      const width = canvas.width;
+      const height = canvas.height;
+      if (width <= 0 || height <= 0) {
+        return;
       }
+      gl.viewport(0, 0, width, height);
+      gl.useProgram(program);
+      gl.uniform2f(uCenterLoc, centerX, centerY);
+      gl.uniform1f(uSpanXLoc, spanX);
+      gl.uniform1f(uAspectLoc, height / width);
+      gl.uniform1i(uMaxIterLoc, maxIterations());
+      gl.uniform2f(uInvResolutionLoc, 1 / width, 1 / height);
+      gl.uniform1i(uUseAALoc, aaEnabled ? 1 : 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      updateMeta();
+    }
+
+    function scheduleDraw() {
+      drawToken += 1;
+      const token = drawToken;
       if (aaTimer !== null) {
         clearTimeout(aaTimer);
         aaTimer = null;
       }
-      renderAtScale(0.5, token, () => {
-        if (token !== renderToken) {
+      draw(false);
+      aaTimer = setTimeout(() => {
+        aaTimer = null;
+        if (token !== drawToken) {
           return;
         }
-        fullRenderTimer = setTimeout(() => {
-          fullRenderTimer = null;
-          renderAtScale(1, token, () => {
-            if (token !== renderToken) {
-              return;
-            }
-            if (aaTimer !== null) {
-              clearTimeout(aaTimer);
-              aaTimer = null;
-            }
-            aaTimer = setTimeout(() => {
-              aaTimer = null;
-              renderSupersampledAntialias(token);
-            }, 0);
-          });
-        }, 0);
-      });
+        draw(true);
+      }, 40);
     }
 
     function resetView() {
       centerX = INITIAL_CENTER_X;
       centerY = INITIAL_CENTER_Y;
       spanX = INITIAL_SPAN_X;
-      scheduleRender();
+      scheduleDraw();
     }
 
     function resizeCanvasForDisplay() {
@@ -430,41 +411,50 @@
       if (canvas.width !== targetW || canvas.height !== targetH) {
         canvas.width = targetW;
         canvas.height = targetH;
-        scheduleRender();
       }
+      scheduleDraw();
     }
 
     canvas.addEventListener("wheel", (event) => {
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const px = (event.clientX - rect.left) * dpr;
-      const py = (event.clientY - rect.top) * dpr;
+      const cssX = event.clientX - (rect.left + canvas.clientLeft);
+      const cssY = event.clientY - (rect.top + canvas.clientTop);
+      const px = clamp(cssX, 0, canvas.clientWidth) * (canvas.width / canvas.clientWidth);
+      const py = clamp(cssY, 0, canvas.clientHeight) * (canvas.height / canvas.clientHeight);
 
       const before = canvasToComplex(px, py, canvas.width, canvas.height);
       const factor = event.deltaY < 0 ? 0.82 : 1.22;
-      showZoomPreview(px, py, factor);
+      if (factor > 1 && spanX >= INITIAL_SPAN_X) {
+        return;
+      }
       const newSpanX = clamp(spanX * factor, 1e-12, INITIAL_SPAN_X);
+      if (newSpanX >= INITIAL_SPAN_X) {
+        centerX = INITIAL_CENTER_X;
+        centerY = INITIAL_CENTER_Y;
+        spanX = INITIAL_SPAN_X;
+        scheduleDraw();
+        return;
+      }
       const newSpanY = newSpanX * (canvas.height / canvas.width);
       const u = px / canvas.width;
-      const v = py / canvas.height;
+      const v = 1 - py / canvas.height;
 
       centerX = before.x - (u - 0.5) * newSpanX;
       centerY = before.y - (v - 0.5) * newSpanY;
       spanX = newSpanX;
-
-      scheduleRender();
+      scheduleDraw();
     }, { passive: false });
 
     resetBtn.addEventListener("click", resetView);
     randomBtn.addEventListener("click", () => {
-      palette = buildPalette();
-      scheduleRender();
+      uploadPalette();
+      scheduleDraw();
     });
 
     window.addEventListener("resize", resizeCanvasForDisplay);
 
-    palette = buildPalette();
+    uploadPalette();
     resizeCanvasForDisplay();
     resetView();
   </script>
