@@ -217,10 +217,7 @@
       min-height: 0;
       overflow-y: auto;
       padding: 10px 12px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 6px;
+      display: block;
     }
 
     .chat-message {
@@ -230,6 +227,7 @@
       border: 1px solid #1f2937;
       border-radius: 8px;
       padding: 6px 8px;
+      margin-bottom: 6px;
       word-break: break-word;
       white-space: pre-wrap;
       line-height: 1.35;
@@ -393,8 +391,8 @@
       <div class="board-wrap">
         <canvas id="board" width="400" height="400" aria-label="Snake board"></canvas>
       </div>
-      <aside class="chat" aria-label="Game chat">
-        <h2 class="chat-header">Global chat</h2>
+      <aside id="chatPanel" class="chat" aria-label="Game chat">
+        <h2 id="chatHeader" class="chat-header">Global chat</h2>
         <div id="chatMessages" class="chat-messages">
           <div class="chat-empty">Loading chat...</div>
         </div>
@@ -438,6 +436,7 @@
     const GRID_SIZE = 20;
     const STEP_MS = 120;
     const SPECIAL_FOOD_SPAWN_CHANCE = 0.16;
+    const CHAT_MESSAGE_LIMIT = 10;
 
     const canvas = document.getElementById("board");
     const ctx = canvas.getContext("2d");
@@ -447,6 +446,8 @@
     const startBtn = document.getElementById("startBtn");
     const restartBtn = document.getElementById("restartBtn");
     const leaderboardListEl = document.getElementById("leaderboardList");
+    const chatPanelEl = document.getElementById("chatPanel");
+    const chatHeaderEl = document.getElementById("chatHeader");
     const chatMessagesEl = document.getElementById("chatMessages");
     const chatFormEl = document.getElementById("chatForm");
     const chatInputEl = document.getElementById("chatInput");
@@ -503,6 +504,7 @@
       statusEl.classList.remove("dead");
       startBtn.disabled = false;
       draw();
+      syncChatPanelHeight();
     }
 
     function updateHud() {
@@ -530,6 +532,21 @@
       chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
     }
 
+    function syncChatPanelHeight() {
+      if (!chatPanelEl || !canvas) {
+        return;
+      }
+      const isNarrow = window.matchMedia("(max-width: 860px)").matches;
+      if (isNarrow) {
+        chatPanelEl.style.height = "";
+        return;
+      }
+      const boardHeight = Math.round(canvas.clientHeight);
+      if (boardHeight > 0) {
+        chatPanelEl.style.height = `${boardHeight}px`;
+      }
+    }
+
     async function submitChatMessage(rawText) {
       const trimmed = rawText.trim();
       if (!trimmed) {
@@ -544,10 +561,34 @@
           text: trimmed,
           createdAt: Date.now()
         });
+        await trimChatToRecentMessages();
       } catch (err) {
         console.error("Failed to send chat message.", err);
         statusEl.textContent = "Could not send chat message (check Firebase rules).";
       }
+    }
+
+    async function trimChatToRecentMessages() {
+      if (!firebaseChatRef) {
+        return;
+      }
+      const snapshot = await firebaseChatRef.once("value");
+      const rows = [];
+      snapshot.forEach((child) => {
+        rows.push({
+          key: child.key,
+          createdAt: Number(child.child("createdAt").val() || 0)
+        });
+      });
+      rows.sort((a, b) => {
+        const timeDiff = a.createdAt - b.createdAt;
+        if (timeDiff !== 0) {
+          return timeDiff;
+        }
+        return String(a.key).localeCompare(String(b.key));
+      });
+      const rowsToRemove = rows.slice(0, Math.max(0, rows.length - CHAT_MESSAGE_LIMIT));
+      await Promise.all(rowsToRemove.map((entry) => firebaseChatRef.child(entry.key).remove()));
     }
 
     function renderLeaderboard() {
@@ -765,7 +806,7 @@
 
         firebaseChatRef
           .orderByChild("createdAt")
-          .limitToLast(120)
+          .limitToLast(CHAT_MESSAGE_LIMIT)
           .on("value", (snap) => {
             const rows = [];
             snap.forEach((child) => {
@@ -782,7 +823,7 @@
               }
               return String(a.key).localeCompare(String(b.key));
             });
-            chatMessages = rows;
+            chatMessages = rows.slice(-CHAT_MESSAGE_LIMIT);
             renderChatMessages();
           }, (err) => {
             console.error("Failed to load chat messages from Firebase.", err);
@@ -1097,6 +1138,7 @@
       submitChatMessage(text);
       chatInputEl.value = "";
     });
+    window.addEventListener("resize", syncChatPanelHeight);
 
     best = 0;
     firebaseLeaderboardRef = null;
@@ -1109,6 +1151,7 @@
     renderChatMessages();
     initializeBestScore();
     setupGame();
+    syncChatPanelHeight();
   </script>
 </body>
 </html>

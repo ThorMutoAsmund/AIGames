@@ -8,6 +8,7 @@ Static multi-game site where each game lives in its own folder and is served fro
 - `/geometrydash/`
 - `/tictactoe/`
 - `/ormespil/`
+- `/mandelbrot/`
 
 ## Add a new game
 
