@@ -32,10 +32,19 @@ Suggested starter rules:
     "scores": {
       "ormespil": {
         "leaderboard": {
+          ".read": true,
           "$entryId": {
-            ".read": true,
             ".write": true,
             ".validate": "newData.val() == null || (newData.hasChildren(['name','score']) && newData.child('name').isString() && newData.child('name').val().matches(/^[A-Z]{1,6}$/) && newData.child('score').isNumber() && newData.child('score').val() >= 0 && (!newData.child('createdAt').exists() || newData.child('createdAt').isNumber()))"
+          }
+        },
+        "chat": {
+          "messages": {
+            ".read": true,
+            "$messageId": {
+              ".write": true,
+              ".validate": "newData.val() == null || (newData.hasChildren(['text','createdAt']) && newData.child('text').isString() && newData.child('text').val().length <= 120 && newData.child('createdAt').isNumber())"
+            }
           }
         }
       }
