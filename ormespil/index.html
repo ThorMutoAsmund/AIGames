@@ -538,13 +538,14 @@
         await firebaseLeaderboardRef.push({
           name: playerName,
           score: scoreValue,
-          createdAt: firebase.database.ServerValue.TIMESTAMP
+          createdAt: Date.now()
         });
         await trimLeaderboardToTopTen();
         statusEl.textContent = `Leaderboard saved for ${playerName}.`;
       } catch (err) {
         console.error("Failed to save leaderboard entry.", err);
-        statusEl.textContent = "Could not save leaderboard entry (check Firebase rules).";
+        const reason = err && err.message ? ` (${err.message})` : "";
+        statusEl.textContent = `Could not save leaderboard entry${reason}`;
       }
     }
 
@@ -886,6 +887,9 @@
     }
 
     window.addEventListener("keydown", (event) => {
+      if (event.target === nameModalInputEl || leaderboardPromptOpen) {
+        return;
+      }
       const key = event.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
         event.preventDefault();
