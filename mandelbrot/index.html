@@ -191,6 +191,7 @@
     <p class="hint">Scroll wheel to zoom at mouse position. Click and drag to pan. Use Reset to go back.</p>
     <canvas id="view" width="960" height="600" aria-label="Mandelbrot renderer"></canvas>
     <div class="meta-row">
+      <button id="saveBtn" class="mini-btn">Save</button>
       <button id="copyBtn" class="mini-btn">Copy</button>
       <button id="pasteBtn" class="mini-btn">Paste</button>
       <div id="meta" class="meta"></div>
@@ -218,10 +219,12 @@
     const INITIAL_SPAN_X = 3.2;
     const PALETTE_SIZE = 1024;
     const MAX_ITER_HARD = 1024;
+    const DOUBLE_MODE_ZOOM = 20000;
 
     const canvas = document.getElementById("view");
     const resetBtn = document.getElementById("resetBtn");
     const randomBtn = document.getElementById("randomBtn");
+    const saveBtn = document.getElementById("saveBtn");
     const copyBtn = document.getElementById("copyBtn");
     const pasteBtn = document.getElementById("pasteBtn");
     const pastePanelEl = document.getElementById("pastePanel");
@@ -236,6 +239,9 @@
     let spanX = INITIAL_SPAN_X;
     let drawToken = 0;
     let aaTimer = null;
+    let cpuTimerFast = null;
+    let cpuTimerFine = null;
+    let currentPalette = null;
     let isDragging = false;
     let dragLastX = 0;
     let dragLastY = 0;
@@ -306,10 +312,15 @@
       return clamp(Math.floor(90 + Math.log10(zoomFactor + 1) * 80), 90, 900);
     }
 
+    function isDoubleMode() {
+      return (INITIAL_SPAN_X / spanX) >= DOUBLE_MODE_ZOOM;
+    }
+
     function updateMeta() {
       const zoom = INITIAL_SPAN_X / spanX;
       const iter = maxIterations();
-      metaEl.textContent = `Center: (${centerX.toFixed(12)}, ${centerY.toFixed(12)})  |  Zoom: ${zoom.toFixed(2)}x  |  Max iterations: ${iter}`;
+      const modeSuffix = isDoubleMode() ? "d" : "";
+      metaEl.textContent = `Center: (${centerX.toFixed(12)}, ${centerY.toFixed(12)})  |  Zoom: ${zoom.toFixed(2)}x  |  Max iterations: ${iter}${modeSuffix}`;
     }
 
     function serializeView() {
@@ -351,6 +362,53 @@
       pastePanelEl.classList.remove("show");
       pasteErrorEl.textContent = "";
       pasteInputEl.value = "";
+    }
+
+    function makePngFilename() {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      return `mandelbrot-${stamp}.png`;
+    }
+
+    function dataUrlToBlob(dataUrl) {
+      const comma = dataUrl.indexOf(",");
+      const meta = dataUrl.slice(0, comma);
+      const base64 = dataUrl.slice(comma + 1);
+      const mimeMatch = /data:([^;]+)/.exec(meta);
+      const mime = mimeMatch ? mimeMatch[1] : "image/png";
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: mime });
+    }
+
+    async function savePngWithPicker() {
+      const filename = makePngFilename();
+      const blob = dataUrlToBlob(canvas.toDataURL("image/png"));
+      // File System Access API (supported in Chromium browsers).
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: "PNG image",
+              accept: { "image/png": [".png"] }
+            }
+          ]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     const gl = canvas.getContext("webgl", {
@@ -436,6 +494,15 @@
       }
     `;
 
+    const blitFragmentSrc = `
+      precision mediump float;
+      varying vec2 vUv;
+      uniform sampler2D uImage;
+      void main() {
+        gl_FragColor = texture2D(uImage, vUv);
+      }
+    `;
+
     function compileShader(type, source) {
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
@@ -464,8 +531,11 @@
     const vs = compileShader(gl.VERTEX_SHADER, vertexSrc);
     const fs = compileShader(gl.FRAGMENT_SHADER, fragmentSrc);
     const program = linkProgram(vs, fs);
+    const blitFs = compileShader(gl.FRAGMENT_SHADER, blitFragmentSrc);
+    const blitProgram = linkProgram(vs, blitFs);
     gl.deleteShader(vs);
     gl.deleteShader(fs);
+    gl.deleteShader(blitFs);
     gl.useProgram(program);
 
     const aPosLoc = gl.getAttribLocation(program, "aPos");
@@ -476,6 +546,8 @@
     const uPaletteLoc = gl.getUniformLocation(program, "uPalette");
     const uInvResolutionLoc = gl.getUniformLocation(program, "uInvResolution");
     const uUseAALoc = gl.getUniformLocation(program, "uUseAA");
+    const blitAPosLoc = gl.getAttribLocation(blitProgram, "aPos");
+    const uImageLoc = gl.getUniformLocation(blitProgram, "uImage");
 
     const quad = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
@@ -495,6 +567,7 @@
     gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
 
     const paletteTexture = gl.createTexture();
+    const cpuTexture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -504,7 +577,7 @@
     gl.uniform1i(uPaletteLoc, 0);
 
     function uploadPalette() {
-      const palette = buildPalette();
+      currentPalette = buildPalette();
       gl.bindTexture(gl.TEXTURE_2D, paletteTexture);
       gl.texImage2D(
         gl.TEXTURE_2D,
@@ -515,8 +588,111 @@
         0,
         gl.RGB,
         gl.UNSIGNED_BYTE,
-        palette
+        currentPalette
       );
+    }
+
+    function drawCpuTexture(pixels, texW, texH) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(blitProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+      gl.enableVertexAttribArray(blitAPosLoc);
+      gl.vertexAttribPointer(blitAPosLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, cpuTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.uniform1i(uImageLoc, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      updateMeta();
+    }
+
+    function renderCpuDouble(token, sampleScale = 1.0, iterMultiplier = 1.0) {
+      if (token !== drawToken) {
+        return;
+      }
+      const width = Math.max(1, Math.floor(canvas.width * sampleScale));
+      const height = Math.max(1, Math.floor(canvas.height * sampleScale));
+      const spanY = spanX * (canvas.height / canvas.width);
+      const maxIter = clamp(Math.floor(maxIterations() * iterMultiplier), 90, 2400);
+      const log2 = Math.log(2);
+      const pixels = new Uint8Array(width * height * 4);
+      const palette = currentPalette || buildPalette();
+      const paletteCount = PALETTE_SIZE;
+      let y = 0;
+      let x = 0;
+
+      function chunk() {
+        if (token !== drawToken) {
+          return;
+        }
+
+        const pixelBudget = 220;
+        let worked = 0;
+        while (y < height && worked < pixelBudget) {
+          if (token !== drawToken) {
+            return;
+          }
+          const cy = centerY + ((1 - y / height) - 0.5) * spanY;
+          while (x < width && worked < pixelBudget) {
+            if (token !== drawToken) {
+              return;
+            }
+            const cx = centerX + (x / width - 0.5) * spanX;
+            let zx = 0;
+            let zy = 0;
+            let iter = 0;
+            while (zx * zx + zy * zy <= 4 && iter < maxIter) {
+              const xx = zx * zx - zy * zy + cx;
+              zy = 2 * zx * zy + cy;
+              zx = xx;
+              iter += 1;
+            }
+
+            const texY = height - 1 - y;
+            const i = (texY * width + x) * 4;
+            if (iter >= maxIter) {
+              pixels[i] = 0;
+              pixels[i + 1] = 0;
+              pixels[i + 2] = 0;
+              pixels[i + 3] = 255;
+              x += 1;
+              worked += 1;
+              continue;
+            }
+            const mag2 = zx * zx + zy * zy;
+            const smooth = iter + 1 - Math.log(Math.log(Math.max(mag2, 1e-12))) / log2;
+            const t = Math.abs((smooth * 0.02) % 1);
+            const idx = Math.min(paletteCount - 1, Math.floor(t * (paletteCount - 1)));
+            const p = idx * 3;
+            pixels[i] = palette[p];
+            pixels[i + 1] = palette[p + 1];
+            pixels[i + 2] = palette[p + 2];
+            pixels[i + 3] = 255;
+            x += 1;
+            worked += 1;
+          }
+          if (x >= width) {
+            x = 0;
+            y += 1;
+          }
+        }
+
+        if (y < height) {
+          setTimeout(chunk, 0);
+          return;
+        }
+        if (token !== drawToken) {
+          return;
+        }
+        drawCpuTexture(pixels, width, height);
+      }
+
+      chunk();
     }
 
     function draw(aaEnabled = false) {
@@ -543,6 +719,32 @@
       if (aaTimer !== null) {
         clearTimeout(aaTimer);
         aaTimer = null;
+      }
+      if (cpuTimerFast !== null) {
+        clearTimeout(cpuTimerFast);
+        cpuTimerFast = null;
+      }
+      if (cpuTimerFine !== null) {
+        clearTimeout(cpuTimerFine);
+        cpuTimerFine = null;
+      }
+      if (isDoubleMode()) {
+        draw(false); // immediate preview while CPU-double refines
+        cpuTimerFast = setTimeout(() => {
+          cpuTimerFast = null;
+          if (token !== drawToken) {
+            return;
+          }
+          renderCpuDouble(token, 0.5, 1.0);
+        }, 90);
+        cpuTimerFine = setTimeout(() => {
+          cpuTimerFine = null;
+          if (token !== drawToken) {
+            return;
+          }
+          renderCpuDouble(token, 1.0, 1.6);
+        }, 320);
+        return;
       }
       draw(false);
       aaTimer = setTimeout(() => {
@@ -665,6 +867,18 @@
         }, 900);
       } catch {
         window.prompt("Copy this Mandelbrot view JSON:", text);
+      }
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      try {
+        await savePngWithPicker();
+      } catch (err) {
+        // User cancel is expected and should stay quiet.
+        if (err && err.name === "AbortError") {
+          return;
+        }
+        console.error("Failed to save PNG.", err);
       }
     });
 
