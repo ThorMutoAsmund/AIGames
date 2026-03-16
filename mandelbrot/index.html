@@ -65,6 +65,22 @@
       cursor: grabbing;
     }
 
+    .render-progress {
+      margin-top: 6px;
+      width: 100%;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(51, 65, 85, 0.8);
+      overflow: hidden;
+    }
+
+    .render-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #fef08a;
+      transition: width 60ms linear;
+    }
+
     .controls {
       margin-top: 12px;
       display: flex;
@@ -190,6 +206,9 @@
     <h1>Mandelbrot Zoomer</h1>
     <p class="hint">Scroll wheel to zoom at mouse position. Click and drag to pan. Use Reset to go back.</p>
     <canvas id="view" width="960" height="600" aria-label="Mandelbrot renderer"></canvas>
+    <div id="renderProgress" class="render-progress" aria-label="Render progress">
+      <div id="renderProgressFill" class="render-progress-fill"></div>
+    </div>
     <div class="meta-row">
       <button id="saveBtn" class="mini-btn">Save</button>
       <button id="copyBtn" class="mini-btn">Copy</button>
@@ -227,6 +246,8 @@
     const saveBtn = document.getElementById("saveBtn");
     const copyBtn = document.getElementById("copyBtn");
     const pasteBtn = document.getElementById("pasteBtn");
+    const renderProgressEl = document.getElementById("renderProgress");
+    const renderProgressFillEl = document.getElementById("renderProgressFill");
     const pastePanelEl = document.getElementById("pastePanel");
     const pasteInputEl = document.getElementById("pasteInput");
     const pasteErrorEl = document.getElementById("pasteError");
@@ -242,6 +263,7 @@
     let cpuTimerFast = null;
     let cpuTimerFine = null;
     let currentPalette = null;
+    let progressIdleTimer = null;
     let isDragging = false;
     let dragLastX = 0;
     let dragLastY = 0;
@@ -323,6 +345,27 @@
       metaEl.textContent = `Center: (${centerX.toFixed(12)}, ${centerY.toFixed(12)})  |  Zoom: ${zoom.toFixed(2)}x  |  Max iterations: ${iter}${modeSuffix}`;
     }
 
+    function setRenderProgress(value, keepVisible = true) {
+      const pct = clamp(value, 0, 1);
+      renderProgressFillEl.style.width = `${(pct * 100).toFixed(1)}%`;
+      if (keepVisible) {
+        renderProgressEl.style.opacity = "1";
+        if (progressIdleTimer !== null) {
+          clearTimeout(progressIdleTimer);
+          progressIdleTimer = null;
+        }
+      }
+      if (pct >= 1) {
+        if (progressIdleTimer !== null) {
+          clearTimeout(progressIdleTimer);
+        }
+        progressIdleTimer = setTimeout(() => {
+          renderProgressEl.style.opacity = "0.45";
+          progressIdleTimer = null;
+        }, 380);
+      }
+    }
+
     function serializeView() {
       return JSON.stringify({
         x: Number(centerX.toFixed(15)),
@@ -383,9 +426,98 @@
       return new Blob([bytes], { type: mime });
     }
 
+    function crc32(bytes) {
+      let crc = 0xffffffff;
+      for (let i = 0; i < bytes.length; i += 1) {
+        crc ^= bytes[i];
+        for (let j = 0; j < 8; j += 1) {
+          const mask = -(crc & 1);
+          crc = (crc >>> 1) ^ (0xedb88320 & mask);
+        }
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function writeUint32BE(view, offset, value) {
+      view.setUint32(offset, value >>> 0, false);
+    }
+
+    function buildPngTextChunk(keyword, text) {
+      const encoder = new TextEncoder();
+      const keywordBytes = encoder.encode(keyword);
+      const textBytes = encoder.encode(text);
+      const data = new Uint8Array(keywordBytes.length + 1 + textBytes.length);
+      data.set(keywordBytes, 0);
+      data[keywordBytes.length] = 0;
+      data.set(textBytes, keywordBytes.length + 1);
+
+      const type = new Uint8Array([0x74, 0x45, 0x58, 0x74]); // tEXt
+      const crcInput = new Uint8Array(type.length + data.length);
+      crcInput.set(type, 0);
+      crcInput.set(data, type.length);
+      const crc = crc32(crcInput);
+
+      const out = new Uint8Array(4 + 4 + data.length + 4);
+      const view = new DataView(out.buffer);
+      writeUint32BE(view, 0, data.length);
+      out.set(type, 4);
+      out.set(data, 8);
+      writeUint32BE(view, 8 + data.length, crc);
+      return out;
+    }
+
+    function injectPngTextChunk(pngBytes, textChunk) {
+      // PNG layout: signature (8 bytes), then chunks. Insert before IEND.
+      const sigLen = 8;
+      let pos = sigLen;
+      while (pos + 12 <= pngBytes.length) {
+        const len =
+          (pngBytes[pos] << 24) |
+          (pngBytes[pos + 1] << 16) |
+          (pngBytes[pos + 2] << 8) |
+          pngBytes[pos + 3];
+        const typePos = pos + 4;
+        const end = pos + 12 + len;
+        if (end > pngBytes.length) {
+          break;
+        }
+        const isIEND =
+          pngBytes[typePos] === 0x49 &&
+          pngBytes[typePos + 1] === 0x45 &&
+          pngBytes[typePos + 2] === 0x4e &&
+          pngBytes[typePos + 3] === 0x44;
+        if (isIEND) {
+          const out = new Uint8Array(pngBytes.length + textChunk.length);
+          out.set(pngBytes.slice(0, pos), 0);
+          out.set(textChunk, pos);
+          out.set(pngBytes.slice(pos), pos + textChunk.length);
+          return out;
+        }
+        pos = end;
+      }
+      return pngBytes;
+    }
+
+    function currentBoundsComment() {
+      const spanY = spanX * (canvas.height / canvas.width);
+      const left = centerX - spanX * 0.5;
+      const right = centerX + spanX * 0.5;
+      const top = centerY + spanY * 0.5;
+      const bottom = centerY - spanY * 0.5;
+      return `Bounds top,left - bottom,right: (${top.toFixed(15)}, ${left.toFixed(15)}) - (${bottom.toFixed(15)}, ${right.toFixed(15)})`;
+    }
+
+    async function buildAnnotatedPngBlob() {
+      const baseBlob = dataUrlToBlob(canvas.toDataURL("image/png"));
+      const pngBytes = new Uint8Array(await baseBlob.arrayBuffer());
+      const textChunk = buildPngTextChunk("Comment", currentBoundsComment());
+      const annotated = injectPngTextChunk(pngBytes, textChunk);
+      return new Blob([annotated], { type: "image/png" });
+    }
+
     async function savePngWithPicker() {
       const filename = makePngFilename();
-      const blob = dataUrlToBlob(canvas.toDataURL("image/png"));
+      const blob = await buildAnnotatedPngBlob();
       // File System Access API (supported in Chromium browsers).
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
@@ -416,7 +548,7 @@
       alpha: false,
       depth: false,
       stencil: false,
-      preserveDrawingBuffer: false
+      preserveDrawingBuffer: true
     });
 
     if (!gl) {
@@ -611,7 +743,7 @@
       updateMeta();
     }
 
-    function renderCpuDouble(token, sampleScale = 1.0, iterMultiplier = 1.0) {
+    function renderCpuDouble(token, sampleScale = 1.0, iterMultiplier = 1.0, progressStart = 0, progressSpan = 1, onDone) {
       if (token !== drawToken) {
         return;
       }
@@ -625,6 +757,8 @@
       const paletteCount = PALETTE_SIZE;
       let y = 0;
       let x = 0;
+      const totalPixels = width * height;
+      setRenderProgress(progressStart);
 
       function chunk() {
         if (token !== drawToken) {
@@ -682,6 +816,10 @@
           }
         }
 
+        const processed = y * width + x;
+        const localProgress = totalPixels > 0 ? processed / totalPixels : 1;
+        setRenderProgress(progressStart + progressSpan * localProgress);
+
         if (y < height) {
           setTimeout(chunk, 0);
           return;
@@ -690,6 +828,10 @@
           return;
         }
         drawCpuTexture(pixels, width, height);
+        setRenderProgress(progressStart + progressSpan);
+        if (onDone) {
+          onDone();
+        }
       }
 
       chunk();
@@ -729,23 +871,25 @@
         cpuTimerFine = null;
       }
       if (isDoubleMode()) {
+        setRenderProgress(0.05);
         draw(false); // immediate preview while CPU-double refines
         cpuTimerFast = setTimeout(() => {
           cpuTimerFast = null;
           if (token !== drawToken) {
             return;
           }
-          renderCpuDouble(token, 0.5, 1.0);
+          renderCpuDouble(token, 0.5, 1.0, 0.12, 0.30);
         }, 90);
         cpuTimerFine = setTimeout(() => {
           cpuTimerFine = null;
           if (token !== drawToken) {
             return;
           }
-          renderCpuDouble(token, 1.0, 1.6);
+          renderCpuDouble(token, 1.0, 1.6, 0.45, 0.55);
         }, 320);
         return;
       }
+      setRenderProgress(0.12);
       draw(false);
       aaTimer = setTimeout(() => {
         aaTimer = null;
@@ -753,6 +897,7 @@
           return;
         }
         draw(true);
+        setRenderProgress(1);
       }, 40);
     }
 
