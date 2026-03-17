@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mandala Generator</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d0720;
+      --panel: #17102f;
+      --border: #2a2050;
+      --text: #ece8ff;
+      --muted: #a8a1d3;
+      --accent: #44d3f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(90vw 60vh at 20% 20%, #1e1440, transparent 60%),
+        radial-gradient(60vw 60vh at 80% 80%, #1b0938, transparent 60%),
+        var(--bg);
+      color: var(--text);
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, #1a1237, var(--panel));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.3rem;
+      letter-spacing: 0.3px;
+    }
+
+    .hint {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .control {
+      margin: 12px 0;
+    }
+
+    label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      color: #d8d0ff;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    select {
+      width: 100%;
+      border: 1px solid #3a2e71;
+      background: #261a4f;
+      color: #f6f4ff;
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-weight: 600;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    button {
+      border: 1px solid #3a2e71;
+      background: #261a4f;
+      color: #f6f4ff;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.05s ease, background 0.2s ease;
+    }
+
+    button:hover {
+      background: #33236b;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .wild {
+      background: linear-gradient(90deg, #7030ff, #c22dff, #ff4fa9);
+      border-color: #b67dff;
+    }
+
+    #canvasWrap {
+      display: grid;
+      place-items: center;
+      padding: 12px;
+    }
+
+    canvas {
+      width: min(82vmin, 900px);
+      height: min(82vmin, 900px);
+      max-width: 100%;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: #090217;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    @media (max-width: 980px) {
+      body {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="panel">
+    <h1>Mandala Generator</h1>
+    <p class="hint">Push it beyond normal: chaos, sparkle, twist, and dense detail.</p>
+
+    <div class="control">
+      <label for="symmetry">Symmetry <span id="symmetryVal">12</span></label>
+      <input id="symmetry" type="range" min="4" max="36" step="1" value="12" />
+    </div>
+
+    <div class="control">
+      <label for="layers">Layers <span id="layersVal">8</span></label>
+      <input id="layers" type="range" min="3" max="16" step="1" value="8" />
+    </div>
+
+    <div class="control">
+      <label for="petalDepth">Motif Depth <span id="petalDepthVal">58</span></label>
+      <input id="petalDepth" type="range" min="20" max="120" step="1" value="58" />
+    </div>
+
+    <div class="control">
+      <label for="lineWidth">Line Width <span id="lineWidthVal">2.5</span></label>
+      <input id="lineWidth" type="range" min="0.5" max="7" step="0.1" value="2.5" />
+    </div>
+
+    <div class="control">
+      <label for="hueShift">Hue Shift <span id="hueShiftVal">35</span></label>
+      <input id="hueShift" type="range" min="5" max="90" step="1" value="35" />
+    </div>
+
+    <div class="control">
+      <label for="detail">Detail Level <span id="detailVal">62</span></label>
+      <input id="detail" type="range" min="0" max="100" step="1" value="62" />
+    </div>
+
+    <div class="control">
+      <label for="chaos">Chaos <span id="chaosVal">38</span></label>
+      <input id="chaos" type="range" min="0" max="100" step="1" value="38" />
+    </div>
+
+    <div class="control">
+      <label for="sparkle">Sparkle <span id="sparkleVal">55</span></label>
+      <input id="sparkle" type="range" min="0" max="100" step="1" value="55" />
+    </div>
+
+    <div class="control">
+      <label for="twist">Twist <span id="twistVal">28</span></label>
+      <input id="twist" type="range" min="-180" max="180" step="1" value="28" />
+    </div>
+
+    <div class="control">
+      <label for="seed">Seed <span id="seedVal">42</span></label>
+      <input id="seed" type="range" min="1" max="999" step="1" value="42" />
+    </div>
+
+    <div class="control">
+      <label for="patternMode">Pattern Mode</label>
+      <select id="patternMode">
+        <option value="mixed">Fractal Ritual</option>
+        <option value="kaleido">Kaleido Storm</option>
+        <option value="tilework">Tilework</option>
+        <option value="dotwork">Dotwork</option>
+        <option value="geometric">Sacred Geometry</option>
+        <option value="ornate">Ornate Bloom</option>
+      </select>
+    </div>
+
+    <div class="control">
+      <label for="paletteMode">Palette</label>
+      <select id="paletteMode">
+        <option value="neon">Neon</option>
+        <option value="ocean">Ocean</option>
+        <option value="sunset">Sunset</option>
+        <option value="forest">Forest</option>
+        <option value="cosmic">Cosmic</option>
+        <option value="inferno">Inferno</option>
+        <option value="candy">Candy Rave</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <button id="renderBtn" type="button">Render</button>
+      <button id="randomBtn" type="button">Randomize</button>
+      <button id="wildBtn" class="wild" type="button">Go Wild</button>
+      <button id="downloadBtn" type="button">Download PNG</button>
+      <button id="darkBgBtn" type="button">Toggle Background</button>
+    </div>
+  </section>
+
+  <section id="canvasWrap" class="panel">
+    <canvas id="mandalaCanvas" width="1200" height="1200" aria-label="Mandala artwork"></canvas>
+  </section>
+
+  <script>
+    const TAU = Math.PI * 2;
+    const controls = {
+      symmetry: document.getElementById("symmetry"),
+      layers: document.getElementById("layers"),
+      petalDepth: document.getElementById("petalDepth"),
+      lineWidth: document.getElementById("lineWidth"),
+      hueShift: document.getElementById("hueShift"),
+      detail: document.getElementById("detail"),
+      chaos: document.getElementById("chaos"),
+      sparkle: document.getElementById("sparkle"),
+      twist: document.getElementById("twist"),
+      seed: document.getElementById("seed"),
+      patternMode: document.getElementById("patternMode"),
+      paletteMode: document.getElementById("paletteMode")
+    };
+
+    const valueSpans = {
+      symmetry: document.getElementById("symmetryVal"),
+      layers: document.getElementById("layersVal"),
+      petalDepth: document.getElementById("petalDepthVal"),
+      lineWidth: document.getElementById("lineWidthVal"),
+      hueShift: document.getElementById("hueShiftVal"),
+      detail: document.getElementById("detailVal"),
+      chaos: document.getElementById("chaosVal"),
+      sparkle: document.getElementById("sparkleVal"),
+      twist: document.getElementById("twistVal"),
+      seed: document.getElementById("seedVal")
+    };
+
+    const canvas = document.getElementById("mandalaCanvas");
+    const ctx = canvas.getContext("2d");
+    const renderBtn = document.getElementById("renderBtn");
+    const randomBtn = document.getElementById("randomBtn");
+    const wildBtn = document.getElementById("wildBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const darkBgBtn = document.getElementById("darkBgBtn");
+    let darkBackground = true;
+
+    function mulberry32(seed) {
+      let t = seed >>> 0;
+      return function () {
+        t += 0x6D2B79F5;
+        let x = Math.imul(t ^ (t >>> 15), t | 1);
+        x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+        return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function hsl(h, s, l, a = 1) {
+      return `hsla(${(h % 360 + 360) % 360} ${s}% ${l}% / ${a})`;
+    }
+
+    function paletteSet(mode, shift, energy) {
+      const defs = {
+        neon: [290, 328, 208, 168, 42, 12],
+        ocean: [200, 184, 172, 225, 102, 64],
+        sunset: [14, 348, 304, 34, 62, 84],
+        forest: [132, 150, 96, 44, 28, 172],
+        cosmic: [260, 298, 187, 332, 56, 220],
+        inferno: [8, 24, 42, 352, 64, 15],
+        candy: [318, 185, 338, 152, 52, 282]
+      };
+      const base = defs[mode] || defs.neon;
+      return base.map((v, i) => {
+        const sat = Math.min(98, 68 + energy * 22 + (i % 2 ? 8 : 0));
+        const lit = darkBackground ? 46 + energy * 24 + (i % 3) * 2 : 38 + energy * 12 + (i % 2) * 2;
+        return hsl(v + shift + i * 7, sat, lit);
+      });
+    }
+
+    function drawRingSlice(innerR, outerR, a0, a1) {
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, a0, a1);
+      ctx.arc(0, 0, innerR, a1, a0, true);
+      ctx.closePath();
+    }
+
+    function drawDotChain(radius, dots, dotSize, colorA, colorB, phase = 0) {
+      for (let i = 0; i < dots; i += 1) {
+        const a = phase + (TAU * i) / dots;
+        const x = Math.cos(a) * radius;
+        const y = Math.sin(a) * radius;
+        ctx.beginPath();
+        ctx.arc(x, y, dotSize, 0, TAU);
+        ctx.fillStyle = i % 2 === 0 ? colorA : colorB;
+        ctx.fill();
+      }
+    }
+
+    function drawLeaf(innerR, outerR, width, depth, colorA, colorB) {
+      const mid = (innerR + outerR) * 0.5;
+      const span = (outerR - innerR) * (0.5 + depth * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(mid - span * 0.55, 0);
+      ctx.bezierCurveTo(mid - span * 0.1, -width * 0.7, mid + span * 0.7, -width * 0.3, mid + span * 0.72, 0);
+      ctx.bezierCurveTo(mid + span * 0.7, width * 0.3, mid - span * 0.1, width * 0.7, mid - span * 0.55, 0);
+      ctx.closePath();
+      ctx.fillStyle = colorA;
+      ctx.fill();
+      ctx.strokeStyle = colorB;
+      ctx.stroke();
+    }
+
+    function drawChevron(innerR, outerR, width, colorA, colorB) {
+      const mid = (innerR + outerR) * 0.5;
+      const len = (outerR - innerR) * 0.86;
+      ctx.beginPath();
+      ctx.moveTo(mid - len * 0.5, 0);
+      ctx.lineTo(mid, -width * 0.65);
+      ctx.lineTo(mid + len * 0.5, 0);
+      ctx.lineTo(mid, width * 0.65);
+      ctx.closePath();
+      ctx.fillStyle = colorA;
+      ctx.fill();
+      ctx.strokeStyle = colorB;
+      ctx.stroke();
+    }
+
+    function drawBurst(innerR, outerR, width, colorA, colorB) {
+      const mid = (innerR + outerR) * 0.5;
+      const r1 = (outerR - innerR) * 0.48;
+      const r2 = (outerR - innerR) * 0.18;
+      const spikes = 6;
+      ctx.beginPath();
+      for (let i = 0; i < spikes * 2; i += 1) {
+        const a = (Math.PI * i) / spikes;
+        const r = i % 2 === 0 ? r1 : r2;
+        const x = mid + Math.cos(a) * r;
+        const y = Math.sin(a) * width * 0.02;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = colorA;
+      ctx.fill();
+      ctx.strokeStyle = colorB;
+      ctx.stroke();
+    }
+
+    function drawSegmentOrnaments(mode, innerR, outerR, aMid, colors, depth, chaos, ringIndex, rand) {
+      const width = Math.max(7, (outerR - innerR) * (0.55 + depth * 0.65));
+      const c0 = colors[(ringIndex + 1) % colors.length];
+      const c1 = colors[(ringIndex + 3) % colors.length];
+      const c2 = colors[(ringIndex + 5) % colors.length];
+      const jitter = (rand() - 0.5) * chaos * 0.08;
+      ctx.save();
+      ctx.rotate(aMid + jitter);
+
+      if (mode === "geometric") {
+        drawChevron(innerR, outerR, width, c0, c1);
+      } else if (mode === "dotwork") {
+        drawLeaf(innerR, outerR, width * 0.85, depth, c0, c1);
+        const dots = 3 + Math.floor(rand() * 5 + chaos * 2);
+        const base = (innerR + outerR) * 0.5;
+        for (let i = 0; i < dots; i += 1) {
+          ctx.beginPath();
+          ctx.arc(base - (dots - i) * ((outerR - innerR) * 0.08), 0, 1.8 + i * 0.8, 0, TAU);
+          ctx.fillStyle = i % 2 === 0 ? "#ffffff" : c2;
+          ctx.fill();
+        }
+      } else if (mode === "tilework") {
+        drawChevron(innerR, outerR, width, c0, c1);
+        drawLeaf(innerR + (outerR - innerR) * 0.14, outerR - (outerR - innerR) * 0.2, width * 0.56, depth * 0.6, c2, "#fff8");
+      } else if (mode === "kaleido") {
+        drawBurst(innerR, outerR, width, c0, c1);
+        drawChevron(innerR + (outerR - innerR) * 0.2, outerR - (outerR - innerR) * 0.24, width * 0.6, c2, "#fff7");
+      } else {
+        drawLeaf(innerR, outerR, width, depth, c0, c1);
+        drawChevron(innerR + (outerR - innerR) * 0.18, outerR - (outerR - innerR) * 0.14, width * 0.44, c2, "#fff8");
+      }
+      ctx.restore();
+    }
+
+    function drawCenterMedallion(radius, colors, symmetry, sparkle) {
+      const rings = 6;
+      for (let i = 0; i < rings; i += 1) {
+        const r = radius * (1 - i / (rings + 1));
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, TAU);
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+      }
+      drawDotChain(radius * 0.75, Math.max(14, symmetry * 2), Math.max(2, radius * 0.036), "#ffffff", colors[2]);
+      if (sparkle > 0.1) {
+        drawDotChain(radius * 0.46, Math.max(10, symmetry), Math.max(1.4, radius * 0.022), "#ffffff", colors[4], Math.PI / symmetry);
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 0.17, 0, TAU);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+    }
+
+    function updateLabels() {
+      Object.keys(valueSpans).forEach((key) => {
+        valueSpans[key].textContent = controls[key].value;
+      });
+    }
+
+    function renderMandala() {
+      const symmetry = Number(controls.symmetry.value);
+      const layers = Number(controls.layers.value);
+      const motifDepth = Number(controls.petalDepth.value) / 100;
+      const lineWidth = Number(controls.lineWidth.value);
+      const hueShift = Number(controls.hueShift.value);
+      const detail = Number(controls.detail.value) / 100;
+      const chaos = Number(controls.chaos.value) / 100;
+      const sparkle = Number(controls.sparkle.value) / 100;
+      const twist = (Number(controls.twist.value) * Math.PI) / 180;
+      const seed = Number(controls.seed.value);
+      const patternMode = controls.patternMode.value;
+      const paletteMode = controls.paletteMode.value;
+      const rand = mulberry32(seed);
+      const colors = paletteSet(paletteMode, hueShift, Math.max(detail, sparkle));
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = lineWidth;
+
+      const back = ctx.createRadialGradient(0, 0, 120, 0, 0, canvas.width * 0.56);
+      if (darkBackground) {
+        back.addColorStop(0, hsl(248 + hueShift, 62, 16));
+        back.addColorStop(1, "#020105");
+      } else {
+        back.addColorStop(0, "#fffef9");
+        back.addColorStop(1, "#e9e5f2");
+      }
+      ctx.fillStyle = back;
+      ctx.fillRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+
+      const maxRadius = canvas.width * 0.45;
+      ctx.beginPath();
+      ctx.arc(0, 0, maxRadius, 0, TAU);
+      ctx.fillStyle = darkBackground ? "#150d2d" : "#fdfaff";
+      ctx.fill();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, maxRadius, 0, TAU);
+      ctx.clip();
+
+      for (let layer = 0; layer < layers; layer += 1) {
+        const innerR = (layer / layers) * maxRadius;
+        const outerR = ((layer + 1) / layers) * maxRadius + 0.8;
+        const ringWeight = 1 + layer / Math.max(1, layers - 1);
+        const segmentCount = Math.max(
+          6,
+          Math.floor(symmetry + layer * (1.1 + detail * 2.4) + chaos * 6 + (layer % 2))
+        );
+        const step = TAU / segmentCount;
+        const layerTwist = twist * ringWeight + (rand() - 0.5) * chaos * 0.4;
+        const mode = patternMode === "mixed"
+          ? ["tilework", "dotwork", "geometric", "ornate", "kaleido"][layer % 5]
+          : patternMode;
+
+        for (let i = 0; i < segmentCount; i += 1) {
+          const a0 = i * step + layerTwist;
+          const a1 = (i + 1) * step + layerTwist;
+          const aMid = (a0 + a1) * 0.5;
+          const cA = colors[(i + layer) % colors.length];
+          const cB = colors[(i + layer + 2) % colors.length];
+
+          drawRingSlice(innerR, outerR, a0, a1);
+          const gx0 = Math.cos(aMid) * innerR;
+          const gy0 = Math.sin(aMid) * innerR;
+          const gx1 = Math.cos(aMid) * outerR;
+          const gy1 = Math.sin(aMid) * outerR;
+          const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+          grad.addColorStop(0, cA);
+          grad.addColorStop(1, cB);
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.strokeStyle = darkBackground ? "#ffffff1f" : "#0000001a";
+          ctx.stroke();
+
+          drawSegmentOrnaments(mode, innerR, outerR, aMid, colors, motifDepth, chaos, layer, rand);
+        }
+
+        const dotDensity = 2 + Math.floor(detail * 4 + sparkle * 4);
+        const chainDots = Math.max(16, segmentCount * dotDensity);
+        const dotRadius = innerR + (outerR - innerR) * (layer % 2 === 0 ? 0.2 : 0.84);
+        const dotSize = Math.max(1.1, 1 + (outerR - innerR) * (0.03 + sparkle * 0.08));
+        drawDotChain(dotRadius, chainDots, dotSize, "#ffffff", colors[(layer + 1) % colors.length], layerTwist);
+
+        if (sparkle > 0.25) {
+          const sparkles = Math.floor(30 + sparkle * 90 + detail * 55);
+          for (let s = 0; s < sparkles; s += 1) {
+            const a = rand() * TAU;
+            const rr = innerR + rand() * (outerR - innerR);
+            const x = Math.cos(a) * rr;
+            const y = Math.sin(a) * rr;
+            ctx.beginPath();
+            ctx.arc(x, y, 0.4 + rand() * (1.9 + sparkle * 2.4), 0, TAU);
+            ctx.fillStyle = rand() > 0.65 ? "#ffffffd9" : colors[(s + layer) % colors.length];
+            ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
+
+      drawCenterMedallion(maxRadius * (0.2 + detail * 0.08), colors, symmetry, sparkle);
+      drawDotChain(
+        maxRadius * 0.986,
+        Math.max(56, Math.floor(symmetry * (4 + detail * 4))),
+        Math.max(1.2, lineWidth * (0.8 + sparkle * 0.7)),
+        colors[2],
+        darkBackground ? "#ffd26a" : "#936400"
+      );
+      ctx.beginPath();
+      ctx.arc(0, 0, maxRadius, 0, TAU);
+      ctx.strokeStyle = darkBackground ? "#f0c866" : "#7b612f";
+      ctx.lineWidth = Math.max(2, lineWidth + 0.8);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function randomize() {
+      controls.symmetry.value = String(8 + Math.floor(Math.random() * 22));
+      controls.layers.value = String(6 + Math.floor(Math.random() * 10));
+      controls.petalDepth.value = String(30 + Math.floor(Math.random() * 90));
+      controls.lineWidth.value = (0.8 + Math.random() * 3.8).toFixed(1);
+      controls.hueShift.value = String(Math.floor(Math.random() * 120));
+      controls.detail.value = String(35 + Math.floor(Math.random() * 66));
+      controls.chaos.value = String(Math.floor(Math.random() * 100));
+      controls.sparkle.value = String(20 + Math.floor(Math.random() * 81));
+      controls.twist.value = String(-150 + Math.floor(Math.random() * 301));
+      controls.seed.value = String(1 + Math.floor(Math.random() * 998));
+      const patterns = ["mixed", "kaleido", "tilework", "dotwork", "geometric", "ornate"];
+      const palettes = ["neon", "ocean", "sunset", "forest", "cosmic", "inferno", "candy"];
+      controls.patternMode.value = patterns[Math.floor(Math.random() * patterns.length)];
+      controls.paletteMode.value = palettes[Math.floor(Math.random() * palettes.length)];
+      updateLabels();
+      renderMandala();
+    }
+
+    function goWild() {
+      controls.symmetry.value = String(10 + Math.floor(Math.random() * 22));
+      controls.layers.value = String(10 + Math.floor(Math.random() * 7));
+      controls.petalDepth.value = String(55 + Math.floor(Math.random() * 65));
+      controls.lineWidth.value = (1.2 + Math.random() * 3.8).toFixed(1);
+      controls.hueShift.value = String(Math.floor(Math.random() * 240));
+      controls.detail.value = String(70 + Math.floor(Math.random() * 31));
+      controls.chaos.value = String(55 + Math.floor(Math.random() * 46));
+      controls.sparkle.value = String(72 + Math.floor(Math.random() * 29));
+      controls.twist.value = String(-180 + Math.floor(Math.random() * 361));
+      controls.seed.value = String(1 + Math.floor(Math.random() * 998));
+      const patterns = ["mixed", "kaleido", "dotwork", "ornate"];
+      const palettes = ["neon", "cosmic", "inferno", "candy"];
+      controls.patternMode.value = patterns[Math.floor(Math.random() * patterns.length)];
+      controls.paletteMode.value = palettes[Math.floor(Math.random() * palettes.length)];
+      updateLabels();
+      renderMandala();
+    }
+
+    function downloadPng() {
+      const link = document.createElement("a");
+      link.download = `mandala-${controls.seed.value}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    }
+
+    Object.values(controls).forEach((input) => {
+      input.addEventListener("input", () => {
+        updateLabels();
+        renderMandala();
+      });
+      input.addEventListener("change", renderMandala);
+    });
+
+    renderBtn.addEventListener("click", renderMandala);
+    randomBtn.addEventListener("click", randomize);
+    wildBtn.addEventListener("click", goWild);
+    downloadBtn.addEventListener("click", downloadPng);
+    darkBgBtn.addEventListener("click", () => {
+      darkBackground = !darkBackground;
+      renderMandala();
+    });
+
+    updateLabels();
+    renderMandala();
+  </script>
+</body>
+</html>
